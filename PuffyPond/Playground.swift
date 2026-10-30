@@ -51,7 +51,7 @@ final class Playground {
     @ObservationIgnored private var pots: [PaintPot] = []
     /// What you actually see: wet, textured paint on the canvas.
     @ObservationIgnored private let paintLayer = PaintLayer(center: SIMD2(0, 0.1), size: Playground.canvasSize,
-                                                            z: Playground.canvasZ + 0.0015)
+                                                            z: Playground.canvasZ + 0.0015, cellsAcross: 400)
     @ObservationIgnored private var lastStamp: [Int: SIMD2<Float>] = [:]
     @ObservationIgnored private var frameDT: Float = 1.0 / 60.0
     /// Paint stops above the pots so dipping a fish never smears the bottom of the canvas.
@@ -67,7 +67,8 @@ final class Playground {
     @ObservationIgnored private var cameraDistance: Float = 7
     @ObservationIgnored private let cameraY: Float = 0.1
     @ObservationIgnored private let tanHalfFOV = Float(tan(17.0 * Double.pi / 180))
-    static let canvasSize = SIMD2<Float>(3.6, 2.4)
+    /// A big canvas (≈ 1.8× wider than before) — lots of room for broad arm strokes.
+    static let canvasSize = SIMD2<Float>(6.4, 4.0)
     static let canvasZ: Float = 0.04            // front face of the canvas
     static let strokeRadius: Float = 0.085
 
@@ -129,7 +130,7 @@ final class Playground {
         key.shadowRadius = 10
         key.shadowSampleCount = 16
         key.shadowColor = PlatformColor(white: 0, alpha: 0.28)
-        key.orthographicScale = 5
+        key.orthographicScale = 8
         key.shadowMapSize = CGSize(width: 2048, height: 2048)
         let keyNode = SCNNode()
         keyNode.light = key
@@ -151,12 +152,12 @@ final class Playground {
         canvasMaterial.diffuse.contents = Toybox.canvasTexture()
         canvasMaterial.diffuse.wrapS = .repeat
         canvasMaterial.diffuse.wrapT = .repeat
-        canvasMaterial.diffuse.contentsTransform = SCNMatrix4MakeScale(6, 4, 1)
+        canvasMaterial.diffuse.contentsTransform = SCNMatrix4MakeScale(11, 7, 1)
         let board = Toybox.node(SCNBox(width: CGFloat(size.x), height: CGFloat(size.y), length: 0.08, chamferRadius: 0.02),
                                 canvasMaterial)
         canvasNode.addChildNode(board)
         let wood = Toybox.plain(SIMD3(0.86, 0.68, 0.45), roughness: 0.7)
-        for x: Float in [-1.1, 1.1] {
+        for x: Float in [-size.x * 0.3, size.x * 0.3] {
             let leg = Toybox.node(SCNCylinder(radius: 0.05, height: 2.6), wood,
                                   at: SIMD3(x, -size.y * 0.5 - 0.9, -0.12))
             leg.simdEulerAngles = SIMD3(0, 0, x > 0 ? -0.12 : 0.12)
