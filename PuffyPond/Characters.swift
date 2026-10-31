@@ -361,6 +361,7 @@ enum BuddyMode: Equatable { case idle, swim, paint, erase }
 enum PotTarget: Equatable {
     case color(Int)
     case critter(CritterKind)
+    case template(TemplateKind)
 }
 
 final class Buddy {

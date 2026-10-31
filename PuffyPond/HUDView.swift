@@ -59,6 +59,7 @@ struct HUDView: View {
         case .drawing: return ("paintbrush.pointed.fill", "Swoosh! Keep pinching and sweep your arm")
         case .erasing: return ("star.fill", "Starfish scrub! Bonk a creature to pop it")
         case .clapToLife: return ("hands.clap.fill", "Clap to bring it to life!")
+        case .tracing: return ("scribble.variable", "Pinch and follow the dotted line · fist to wipe it away")
         case .transforming: return ("sparkles", "Here it comes…")
         case .touchMode: return ("hand.draw.fill", "Drag to draw · double-click to bring to life")
         }

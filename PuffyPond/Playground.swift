@@ -7,7 +7,7 @@ import simd
 nonisolated enum CameraStatus: Equatable { case starting, running, denied, unavailable }
 
 nonisolated enum Hint: Equatable {
-    case starting, raiseHands, swimming, pickingColor, drawing, erasing, clapToLife, transforming, touchMode
+    case starting, raiseHands, swimming, pickingColor, drawing, erasing, clapToLife, tracing, transforming, touchMode
 }
 
 /// "You picked a color" moment for the HUD.
@@ -50,6 +50,9 @@ final class Playground {
     @ObservationIgnored private var creatures: [Creature] = []
     @ObservationIgnored private var pots: [PaintPot] = []
     @ObservationIgnored private var critterPots: [CritterPot] = []
+    @ObservationIgnored private var templatePots: [TemplatePot] = []
+    /// The dotted animal to trace, if one is on the canvas.
+    @ObservationIgnored private var template: TemplateOutline?
     /// What you actually see: wet, textured paint on the canvas.
     @ObservationIgnored private let paintLayer = PaintLayer(center: SIMD2(0, 0.1), size: Playground.canvasSize,
                                                             z: Playground.canvasZ + 0.0015)
@@ -71,6 +74,8 @@ final class Playground {
     /// The pot and bubble columns sit just outside the canvas's left and right edges.
     static let shelfX: Float = canvasSize.x * 0.5 + 0.38
     static let shelfSpacing: Float = 0.62
+    /// Template bubbles stand on the easel tray along the bottom of the canvas.
+    static let templateRowY: Float = 0.1 - canvasSize.y * 0.5 + 0.23
     static let strokeRadius: Float = 0.085
 
     // Timing
@@ -214,7 +219,13 @@ final class Playground {
             scene.rootNode.addChildNode(pot.resident.root)
             critterPots.append(pot)
         }
-
+        // A row of template bubbles on the tray: rub one to get a dotted animal to trace.
+        for (k, kind) in TemplateKind.allCases.enumerated() {
+            let x = (Float(k) - Float(TemplateKind.allCases.count - 1) / 2) * 0.9
+            let pot = TemplatePot(kind: kind, at: SIMD3(x, Self.templateRowY, 0.3))
+            scene.rootNode.addChildNode(pot.root)
+            templatePots.append(pot)
+        }
 
         for slot in 0..<2 {
             let start = SIMD3<Float>(slot == 0 ? -1.2 : 1.2, -0.9, 0.5)
@@ -359,6 +370,13 @@ final class Playground {
             pot.update(dt: dt, beatPulse: beatPulse, rubProgress: min(progress, 1), selectedCount: wearers.count,
                        color: wearers.first?.color)
         }
+        for pot in templatePots {
+            let rubbers = buddies.filter { $0.rubbingPot == .template(pot.kind) }
+            let progress = rubbers.map(\.rubAmount).max() ?? 0
+            if progress > 0 { rubbing = true }
+            pot.update(dt: dt, beatPulse: beatPulse, rubProgress: min(progress, 1), selected: template?.kind == pot.kind)
+        }
+        template?.update()
 
         // Bump creatures with your buddies.
         for buddy in buddies where buddy.mode != .idle {
@@ -428,7 +446,12 @@ final class Playground {
         var p = SIMD2(p3.x, p3.y)
         // Only a little slack sideways: reaching for a pot or bubble beside the canvas shouldn't paint.
         let onCanvas = abs(p.x - center.x) <= half.x + 0.05 && abs(p.y - center.y) <= half.y + 0.12
-        guard onCanvas, !transforming else {
+        // The template bubbles overlap the bottom of the canvas: rubbing one shouldn't smear paint.
+        let onTemplatePot = templatePots.contains { pot in
+            let c = pot.root.simdPosition
+            return simd_distance(p, SIMD2(c.x, c.y + 0.04)) < PaintPot.radius + 0.14
+        }
+        guard onCanvas, !onTemplatePot, !transforming else {
             finishStroke(slot: slot)
             return
         }
@@ -492,7 +515,11 @@ final class Playground {
         let p = SIMD2(s.x, s.y)
         let r = Starfish.eraseRadius
         paintLayer.erase(at: p, radius: r, dt: frameDT)
-        var erasedAny = false
+        var erasedAny = template?.erase(at: p, radius: r) ?? false
+        if let outline = template, outline.isEmpty {
+            outline.node.removeFromParentNode()
+            template = nil
+        }
         var newStrokes: [Stroke] = []
         for stroke in strokes {
             guard stroke.points.contains(where: { simd_distance($0.p, p) < r }) else {
@@ -547,6 +574,9 @@ final class Playground {
             return
         }
         transforming = true
+        // The guide fades away; only the child's own strokes become the creature.
+        template?.fadeAway()
+        template = nil
         let formed = strokes
         strokes = []
         activeStroke = [:]
@@ -604,6 +634,8 @@ final class Playground {
         for stroke in strokes { stroke.node.removeFromParentNode() }
         strokes.removeAll()
         paintLayer.clear()
+        template?.fadeAway()
+        template = nil
         activeStroke = [:]
         lastBead = [:]
         for creature in creatures { creature.pop() }
@@ -634,6 +666,9 @@ final class Playground {
             potPosition = pot.root.simdPosition
         } else if let pot = critterPots.first(where: { near($0.root.simdPosition) }), pot.kind != buddy.critter.kind {
             target = .critter(pot.kind)
+            potPosition = pot.root.simdPosition
+        } else if let pot = templatePots.first(where: { near($0.root.simdPosition) }), pot.kind != template?.kind {
+            target = .template(pot.kind)
             potPosition = pot.root.simdPosition
         } else {
             return stop()
@@ -670,13 +705,27 @@ final class Playground {
             scene.rootNode.addChildNode(buddy.critter.root)
             effects.colorSplash(at: potPosition + SIMD3(0, 0.15, 0.1), color: buddy.color)
             audio.play(.swap, pan: pan)
+        case .template(let kind):
+            showTemplate(kind)
+            effects.colorSplash(at: potPosition + SIMD3(0, 0.15, 0.1), color: kind.signatureColor)
+            audio.play(.sparkle, pan: pan)
         }
+    }
+
+    /// Lays a new dotted outline on the canvas (replacing any other one). Paint already there stays.
+    private func showTemplate(_ kind: TemplateKind) {
+        template?.fadeAway()
+        let outline = TemplateOutline(kind: kind, canvasCenter: SIMD2(0, 0.1), canvasSize: Self.canvasSize,
+                                      z: Self.canvasZ + 0.0008)
+        scene.rootNode.addChildNode(outline.node)
+        template = outline
     }
 
     private func bouncePot(_ target: PotTarget, _ strength: Float) {
         switch target {
         case .color(let index): pots.first { $0.colorIndex == index }?.bounce(strength)
         case .critter(let kind): critterPots.first { $0.kind == kind }?.bounce(strength)
+        case .template(let kind): templatePots.first { $0.kind == kind }?.bounce(strength)
         }
     }
 
@@ -692,6 +741,8 @@ final class Playground {
             next = .pickingColor
         } else if !strokes.isEmpty {
             next = .clapToLife
+        } else if template != nil {
+            next = .tracing
         } else if hands.contains(where: { $0.tracking && !$0.isPointer }) {
             next = .swimming
         } else if cameraStatus == .denied || cameraStatus == .unavailable {

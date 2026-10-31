@@ -18,7 +18,8 @@ It also runs on iPhone/iPad (portrait). No camera? Drag with the mouse/finger to
 | **Pinch** (thumb + index) | Keep pinching and sweep your arm to paint — every brush animal paints its own way (see below). The paint is real-looking: flat wet strokes with ragged edges and bristle grooves; hold still and it pools into a blob, move fast for a dry streaky brush. Wet paint levels out, blends with neighbouring colors and thick blobs drip a little before drying. Let go to stop. |
 | Rub your animal in a **paint pot** | The pots stand in a column down the right side of the canvas. Swipe it back and forth through one: it slowly turns that color while a ring fills around the pot, then *splash!* — new color. Chips under the hint show each hand's color and animal. |
 | Rub a critter in a **bubble** | Bubbles in a column down the left side of the canvas hold little brush animals. Rub yours in one until the ring fills and it turns into that animal. |
-| Fist | Your animal spins into a **Starfish** that scrubs paint away. |
+| Rub a critter in a **template bubble** | Three bubbles stand on the easel tray (fish, turtle, duck). Rub one until the ring fills and a big dotted outline of that animal appears on the canvas to trace. It's only a guide: paint over it, outside it, add a hat — when you clap, the creature is made from your own strokes exactly as drawn, and the outline fades away. |
+| Fist | Your animal spins into a **Starfish** that scrubs paint away (and wipes a template's dotted line). |
 | Clap | The drawing jiggles, inflates into a 3D creature, then shrinks to a cute half size and floats off the canvas. |
 | Bump a creature with your animal | It boings away, surprised. |
 | Starfish into a creature | It swells, trembles and **POPS**: rubber shards in its colors, flying googly eyes, a shockwave ring, sparkles, confetti and a puffy "POP!". |
@@ -47,6 +48,7 @@ Mac extras: mouse-drag draws, double-click = bring to life, ⌥-drag or right-dr
 | `HandTracker.swift` | Camera + Vision hand pose (2 hands, 720p, on device) |
 | `HandInput.swift` | Palm tracking (big moves, not fingertips), open/fist with forgiving hysteresis, clap detection, smoothing + prediction |
 | `Playground.swift` | The game: world, buddies, painting, erasing, transform, creature lifecycle, beat sync |
+| `Template.swift` | Trace templates: the dotted outlines (fish, turtle, duck), the starfish wiping them, and the template bubbles on the tray |
 | `Critter.swift` | Brush animal base: follow spring, lean, squash, face and moods; each animal decides its own `dabs` (while pinching) and `released` (on letting go) |
 | `Tentacles.swift` | Verlet-chain limbs (shape memory, lag, flare) rebuilt as tapered tubes every frame — octopus tentacles, jellyfish tentacles, seahorse tail |
 | `Octopus.swift`, `Snail.swift`, `Pufferfish.swift`, `Seahorse.swift`, `Jellyfish.swift`, `Frog.swift` | The six brush animals |
