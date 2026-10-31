@@ -26,13 +26,13 @@ final class Playground {
     var showCameraPreview = true
     var musicOn = true
     var hint: Hint = .starting
-    var lifeProgress: Double = 0
     var hasDrawing = false
     var creatureCount = 0
     var previewHands: [[CGPoint]] = []
     var imageAspect: CGFloat = 4.0 / 3.0
     var pointerErases = false
-    var fishColors: [Int] = [0, 1]
+    var buddyColors: [Int] = [0, 1]
+    var buddyKinds: [CritterKind] = [.octopus, .seahorse]
     var colorFlash: ColorFlash?
 
     // MARK: World
@@ -49,13 +49,12 @@ final class Playground {
     @ObservationIgnored private var blipDistance: [Int: Float] = [:]
     @ObservationIgnored private var creatures: [Creature] = []
     @ObservationIgnored private var pots: [PaintPot] = []
+    @ObservationIgnored private var critterPots: [CritterPot] = []
     /// What you actually see: wet, textured paint on the canvas.
     @ObservationIgnored private let paintLayer = PaintLayer(center: SIMD2(0, 0.1), size: Playground.canvasSize,
-                                                            z: Playground.canvasZ + 0.0015, cellsAcross: 400)
+                                                            z: Playground.canvasZ + 0.0015)
     @ObservationIgnored private var lastStamp: [Int: SIMD2<Float>] = [:]
     @ObservationIgnored private var frameDT: Float = 1.0 / 60.0
-    /// Paint stops above the pots so dipping a fish never smears the bottom of the canvas.
-    @ObservationIgnored private var paintFloorY: Float = -10
     @ObservationIgnored private var lastGurgle: [Int: Double] = [:]
     @ObservationIgnored private var flashCounter = 0
     @ObservationIgnored private var shake: Float = 0
@@ -70,12 +69,14 @@ final class Playground {
     /// A big canvas (≈ 1.8× wider than before) — lots of room for broad arm strokes.
     static let canvasSize = SIMD2<Float>(6.4, 4.0)
     static let canvasZ: Float = 0.04            // front face of the canvas
+    /// The pot and bubble columns sit just outside the canvas's left and right edges.
+    static let shelfX: Float = canvasSize.x * 0.5 + 0.38
+    static let shelfSpacing: Float = 0.62
     static let strokeRadius: Float = 0.085
 
     // Timing
     @ObservationIgnored private var lastTime: Double = 0
     @ObservationIgnored private var clock: Float = 0
-    @ObservationIgnored private var lastDrawActivity: Double = 0
     @ObservationIgnored private var transforming = false
     @ObservationIgnored private var lastSqueak: Double = 0
     @ObservationIgnored private var lastBeatIndex = -1
@@ -169,23 +170,31 @@ final class Playground {
         canvasNode.simdPosition = SIMD3(0, 0.1, 0)
         scene.rootNode.addChildNode(canvasNode)
 
-        // Paint pots along the bottom: rub a fish in one to pick up its color.
-        let potY = 0.1 - size.y * 0.5 + 0.26
-        paintFloorY = potY + PaintPot.radius + 0.1
         scene.rootNode.addChildNode(paintLayer.node)
+        // Two columns just outside the canvas, so dipping never smears the painting:
+        // paint pots down the right (rub a critter in one to pick up its color),
+        // critter bubbles down the left (rub one to become that brush animal).
+        func columnY(_ k: Int, of count: Int) -> Float {
+            0.1 + (Float(count - 1) / 2 - Float(k)) * Self.shelfSpacing
+        }
         for k in 0..<Paint.colors.count {
-            let x = (Float(k) - Float(Paint.colors.count - 1) / 2) * 0.56
-            let pot = PaintPot(colorIndex: k, at: SIMD3(x, potY, 0.3))
+            let pot = PaintPot(colorIndex: k, at: SIMD3(Self.shelfX, columnY(k, of: Paint.colors.count), 0.3))
             scene.rootNode.addChildNode(pot.root)
             pots.append(pot)
+        }
+        for (k, kind) in CritterKind.allCases.enumerated() {
+            let pot = CritterPot(kind: kind, at: SIMD3(-Self.shelfX, columnY(k, of: CritterKind.allCases.count), 0.3))
+            scene.rootNode.addChildNode(pot.root)
+            scene.rootNode.addChildNode(pot.resident.root)
+            critterPots.append(pot)
         }
 
         scene.rootNode.addChildNode(Toybox.ambientBubbles())
 
         for slot in 0..<2 {
             let start = SIMD3<Float>(slot == 0 ? -1.2 : 1.2, -0.9, 0.5)
-            let buddy = Buddy(slot: slot, colorIndex: slot == 0 ? 0 : 1, start: start)
-            scene.rootNode.addChildNode(buddy.fish.root)
+            let buddy = Buddy(slot: slot, colorIndex: slot == 0 ? 0 : 1, kind: buddyKinds[slot], start: start)
+            scene.rootNode.addChildNode(buddy.critter.root)
             scene.rootNode.addChildNode(buddy.starfish.root)
             buddies.append(buddy)
         }
@@ -197,7 +206,7 @@ final class Playground {
         aspect = Float(size.width / size.height)
         // The canvas nearly fills the window.
         let needHalfH = Self.canvasSize.y * 0.5 * 1.06
-        let needHalfW = Self.canvasSize.x * 0.5 * 1.04
+        let needHalfW = (Self.shelfX + PaintPot.radius + 0.12) * 1.02   // canvas plus the two pot columns
         cameraDistance = max(needHalfH / tanHalfFOV, needHalfW / (tanHalfFOV * aspect))
         cameraNode.simdPosition = SIMD3(0, cameraY, cameraDistance)
     }
@@ -281,17 +290,17 @@ final class Playground {
             }
             if mode != .paint { finishStroke(slot: buddy.slot) }
 
-            let fishZ: Float = 0.42
+            let buddyZ: Float = 0.42
             let target: SIMD3<Float>
             if let hand {
-                target = worldPoint(hand.position, z: fishZ)
+                target = worldPoint(hand.position, z: buddyZ)
             } else {
                 // Idle: swim lazy loops so the buddies always feel alive.
-                let h = halfSize(atZ: fishZ)
+                let h = halfSize(atZ: buddyZ)
                 let t = clock * 0.35 + Float(buddy.slot) * 3.1
-                target = SIMD3(sin(t) * h.x * 0.6, cameraY - h.y * 0.62 + sin(t * 2.3) * 0.15, fishZ)
+                target = SIMD3(sin(t) * h.x * 0.6, cameraY - h.y * 0.62 + sin(t * 2.3) * 0.15, buddyZ)
             }
-            buddy.fish.update(dt: dt, target: target, visible: mode != .erase, painting: mode == .paint,
+            buddy.critter.update(dt: dt, target: target, visible: mode != .erase, painting: mode == .paint,
                               beatPulse: beatPulse)
             buddy.starfish.update(dt: dt, target: SIMD3(target.x, target.y, 0.3), visible: mode == .erase,
                                   beatPulse: beatPulse)
@@ -311,11 +320,19 @@ final class Playground {
         }
         var rubbing = false
         for pot in pots {
-            let rubbers = buddies.filter { $0.rubbingPot == pot.colorIndex }
+            let rubbers = buddies.filter { $0.rubbingPot == .color(pot.colorIndex) }
             let progress = rubbers.map(\.rubAmount).max() ?? 0
             if progress > 0 { rubbing = true }
             let wearing = buddies.filter { $0.colorIndex == pot.colorIndex }.count
             pot.update(dt: dt, beatPulse: beatPulse, rubProgress: min(progress, 1), selectedCount: wearing)
+        }
+        for pot in critterPots {
+            let rubbers = buddies.filter { $0.rubbingPot == .critter(pot.kind) }
+            let progress = rubbers.map(\.rubAmount).max() ?? 0
+            if progress > 0 { rubbing = true }
+            let wearers = buddies.filter { $0.critter.kind == pot.kind }
+            pot.update(dt: dt, beatPulse: beatPulse, rubProgress: min(progress, 1), selectedCount: wearers.count,
+                       color: wearers.first?.color)
         }
 
         // Bump creatures with your buddies.
@@ -329,7 +346,7 @@ final class Playground {
                 } else if buddy.toolSpeed > 0.4,
                           creature.poke(from: tool, strength: min(buddy.toolSpeed / 3, 1)) {
                     audio.play(.boing, a: min(creature.radius / 1.2, 1), pan: panFor(creature.position.value.x))
-                    buddy.fish.react(.surprised, for: 0.5)
+                    buddy.critter.react(.surprised, for: 0.5)
                 }
             }
         }
@@ -351,21 +368,13 @@ final class Playground {
                 audio.play(.pop, pan: panFor(creature.position.value.x))
                 audio.play(.sparkle)
                 shake = 1
-                for buddy in buddies { buddy.fish.react(.surprised, for: 0.6) }
+                for buddy in buddies { buddy.critter.react(.surprised, for: 0.6) }
             }
         }
         for creature in creatures where creature.isGone {
             creature.root.removeFromParentNode()
         }
         creatures.removeAll { $0.isGone }
-
-        // Bring the drawing to life after a little pause.
-        let idleFor = now - lastDrawActivity
-        var progress: Double = 0
-        if !strokes.isEmpty && !transforming && !drawingNow && !erasingNow {
-            progress = min(max((idleFor - 0.8) / 2.2, 0), 1)
-            if progress >= 1 { bringToLife(reason: .timeout) }
-        }
 
         // Canvas and paint cards bounce on the beat.
         if onBeat { canvasSquash.velocity += SIMD3(0.6, -0.6, 0) * (0.4 + energy) }
@@ -381,7 +390,7 @@ final class Playground {
         energy += (min(movement / 3, 1) - energy) * min(1, dt * 1.5)
         audio.update(energy: energy, now: now)
 
-        publishHUD(dt: dt, hands: hands, drawing: drawingNow, erasing: erasingNow, rubbing: rubbing, progress: progress)
+        publishHUD(dt: dt, hands: hands, drawing: drawingNow, erasing: erasingNow, rubbing: rubbing)
     }
 
     private func panFor(_ x: Float) -> Float {
@@ -392,21 +401,22 @@ final class Playground {
 
     private func paint(with buddy: Buddy, now: Double) {
         let slot = buddy.slot
-        let p3 = buddy.fish.position.value
+        let p3 = buddy.critter.position.value
         let half = Self.canvasSize * 0.5 - SIMD2(repeating: Self.strokeRadius)
         let center = SIMD2<Float>(0, 0.1)
         var p = SIMD2(p3.x, p3.y)
-        let onCanvas = abs(p.x - center.x) <= half.x + 0.25 && abs(p.y - center.y) <= half.y + 0.12
-        guard onCanvas, !transforming, p.y > paintFloorY else {
+        // Only a little slack sideways: reaching for a pot or bubble beside the canvas shouldn't paint.
+        let onCanvas = abs(p.x - center.x) <= half.x + 0.05 && abs(p.y - center.y) <= half.y + 0.12
+        guard onCanvas, !transforming else {
             finishStroke(slot: slot)
             return
         }
         p = simd_clamp(p, center - half, center + half)
 
-        // Lay real paint every frame along the fish's path.
-        let speed = buddy.fish.speed
-        paintLayer.stamp(from: lastStamp[slot] ?? p, to: p, radius: Self.strokeRadius,
-                         color: buddy.color, speed: speed, seed: Float(slot) * 13.7 + Float(strokes.count) * 2.3)
+        // Lay real paint every frame, the way this brush animal paints.
+        let dabs = buddy.critter.dabs(from: lastStamp[slot] ?? p, to: p, radius: Self.strokeRadius,
+                                      speed: buddy.critter.speed)
+        lay(dabs, color: buddy.color, seed: Float(slot) * 13.7 + Float(strokes.count) * 2.3)
         lastStamp[slot] = p
 
         let spacing = Self.strokeRadius * 0.6
@@ -431,16 +441,25 @@ final class Playground {
             strokes.append(stroke)
             activeStroke[slot] = stroke
             lastBead[slot] = p
-            buddy.fish.gulp()
+            buddy.critter.gulp()
             audio.play(.blip, a: (p.y - center.y) / Self.canvasSize.y + 0.5, pan: panFor(p.x))
         }
-        lastDrawActivity = now
         if strokes.reduce(0, { $0 + $1.points.count }) > 2600 { bringToLife(reason: .full) }
+    }
+
+    private func lay(_ dabs: [BrushDab], color: SIMD3<Float>, seed: Float) {
+        for (k, dab) in dabs.enumerated() {
+            paintLayer.stamp(from: dab.from, to: dab.to, radius: dab.radius, color: color, speed: dab.speed,
+                             seed: seed + Float(k) * 5.1, style: dab.style)
+        }
     }
 
     private func finishStroke(slot: Int) {
         if activeStroke[slot] != nil, slot < buddies.count {
-            buddies[slot].fish.react(.happy, for: 0.7)   // proud of that line
+            let buddy = buddies[slot]
+            buddy.critter.react(.happy, for: 0.7)   // proud of that line
+            // Some brushes paint when you let go (the pufferfish bursts).
+            lay(buddy.critter.released(), color: buddy.color, seed: Float(slot) * 7.7 + Float(strokes.count))
         }
         activeStroke[slot] = nil
         lastBead[slot] = nil
@@ -486,7 +505,6 @@ final class Playground {
         }
         strokes = newStrokes
         if erasedAny {
-            lastDrawActivity = now
             buddy.starfish.scrubbed()
             if now - lastSqueak > 0.09 {
                 lastSqueak = now
@@ -499,7 +517,7 @@ final class Playground {
 
     // MARK: - Bring the drawing to life
 
-    enum LifeReason { case clap, timeout, full, button }
+    enum LifeReason { case clap, full, button }
 
     func bringToLife(reason: LifeReason) {
         guard !transforming else { return }
@@ -543,7 +561,6 @@ final class Playground {
         paintLayer.trembling = false
         paintLayer.dissolveAway()   // the paint lifts off the canvas and becomes the creature
         transforming = false
-        lastDrawActivity = CACurrentMediaTime()
         guard let mesh else {
             audio.play(.fizzle)
             return
@@ -555,7 +572,7 @@ final class Playground {
         Toybox.confetti(in: scene, at: center)
         Toybox.burst(in: scene, at: center, color: SIMD3(1, 1, 0.85), count: 40, speed: 1.6, size: 0.035, gravity: 0.5)
         audio.play(.fanfare)
-        for buddy in buddies { buddy.fish.react(.happy, for: 1.2) }
+        for buddy in buddies { buddy.critter.react(.happy, for: 1.2) }
         canvasSquash.velocity += SIMD3(1.5, -1.5, 0)
 
         // Keep the pond lively but uncluttered: the oldest friend floats away.
@@ -577,52 +594,73 @@ final class Playground {
 
     // MARK: - Paint pots
 
-    /// Dip a fish into a pot and rub/swipe: it soaks up the color (faster the more you rub).
+    /// Dip a critter into a pot and rub/swipe: it soaks up the color (faster the more you rub).
+    /// Rub it in a critter bubble instead and it turns into that brush animal.
     private func rubPots(_ buddy: Buddy, dt: Float, now: Double) {
-        guard buddy.mode == .swim || buddy.mode == .paint else {
+        func stop() {
             buddy.rubbingPot = nil
             buddy.rubAmount = 0
-            buddy.fish.colorPreview = nil
-            return
+            buddy.critter.colorPreview = nil
         }
-        let p = buddy.fish.position.value
-        let touching = pots.first { pot in
-            let c = pot.root.simdPosition
-            return simd_distance(SIMD2(p.x, p.y), SIMD2(c.x, c.y + 0.04)) < PaintPot.radius + 0.14
+        guard buddy.mode == .swim || buddy.mode == .paint else { return stop() }
+        let p = buddy.critter.position.value
+        func near(_ c: SIMD3<Float>) -> Bool {
+            simd_distance(SIMD2(p.x, p.y), SIMD2(c.x, c.y + 0.04)) < PaintPot.radius + 0.14
         }
-        guard let pot = touching, pot.colorIndex != buddy.colorIndex else {
-            buddy.rubbingPot = nil
+        let target: PotTarget
+        let potPosition: SIMD3<Float>
+        if let pot = pots.first(where: { near($0.root.simdPosition) }), pot.colorIndex != buddy.colorIndex {
+            target = .color(pot.colorIndex)
+            potPosition = pot.root.simdPosition
+        } else if let pot = critterPots.first(where: { near($0.root.simdPosition) }), pot.kind != buddy.critter.kind {
+            target = .critter(pot.kind)
+            potPosition = pot.root.simdPosition
+        } else {
+            return stop()
+        }
+        if buddy.rubbingPot != target {
+            buddy.rubbingPot = target
             buddy.rubAmount = 0
-            buddy.fish.colorPreview = nil
-            return
+            bouncePot(target, 0.6)
         }
-        if buddy.rubbingPot != pot.colorIndex {
-            buddy.rubbingPot = pot.colorIndex
-            buddy.rubAmount = 0
-            pot.bounce(0.6)
-        }
-        buddy.rubAmount += dt * 0.6 + min(buddy.fish.speed, 3) * dt * 0.9
+        // Slow animals (snail, jelly) can't rub fast, so just sitting in the pot counts for a lot too.
+        buddy.rubAmount += dt * 0.9 + min(buddy.critter.speed, 3) * dt * 0.9
         let progress = min(buddy.rubAmount, 1)
-        buddy.fish.colorPreview = (pot.color, progress * 0.85)
-        let pan = panFor(pot.root.simdPosition.x)
+        if case .color(let index) = target { buddy.critter.colorPreview = (Paint.colors[index], progress * 0.85) }
+        let pan = panFor(potPosition.x)
         if now - (lastGurgle[buddy.slot] ?? 0) > 0.11 {
             lastGurgle[buddy.slot] = now
             audio.play(.gurgle, a: progress, pan: pan)
         }
-        if progress >= 1 {
-            buddy.pick(pot.colorIndex)
-            buddy.rubbingPot = nil
-            buddy.rubAmount = 0
-            pot.bounce(1.5)
-            effects.colorSplash(at: pot.root.simdPosition + SIMD3(0, 0.15, 0.1), color: pot.color)
-            audio.play(.pick, a: Float(pot.colorIndex), pan: pan)
+        guard progress >= 1 else { return }
+        buddy.rubbingPot = nil
+        buddy.rubAmount = 0
+        bouncePot(target, 1.5)
+        switch target {
+        case .color(let index):
+            buddy.pick(index)
+            effects.colorSplash(at: potPosition + SIMD3(0, 0.15, 0.1), color: Paint.colors[index])
+            audio.play(.pick, a: Float(index), pan: pan)
             flashCounter += 1
-            colorFlash = ColorFlash(slot: buddy.slot, colorIndex: pot.colorIndex, id: flashCounter)
+            colorFlash = ColorFlash(slot: buddy.slot, colorIndex: index, id: flashCounter)
+        case .critter(let kind):
+            finishStroke(slot: buddy.slot)
+            let old = buddy.become(kind)
+            old.root.removeFromParentNode()
+            scene.rootNode.addChildNode(buddy.critter.root)
+            effects.colorSplash(at: potPosition + SIMD3(0, 0.15, 0.1), color: buddy.color)
+            audio.play(.swap, pan: pan)
         }
     }
 
-    private func publishHUD(dt: Float, hands: [HandState], drawing: Bool, erasing: Bool, rubbing: Bool,
-                            progress: Double) {
+    private func bouncePot(_ target: PotTarget, _ strength: Float) {
+        switch target {
+        case .color(let index): pots.first { $0.colorIndex == index }?.bounce(strength)
+        case .critter(let kind): critterPots.first { $0.kind == kind }?.bounce(strength)
+        }
+    }
+
+    private func publishHUD(dt: Float, hands: [HandState], drawing: Bool, erasing: Bool, rubbing: Bool) {
         let next: Hint
         if transforming {
             next = .transforming
@@ -644,13 +682,13 @@ final class Playground {
             next = .raiseHands
         }
         if next != hint { hint = next }
-        let rounded = (progress * 30).rounded() / 30
-        if rounded != lifeProgress { lifeProgress = rounded }
         let drawingExists = !strokes.isEmpty
         if drawingExists != hasDrawing { hasDrawing = drawingExists }
         if creatures.count != creatureCount { creatureCount = creatures.count }
         let colors = buddies.map(\.colorIndex)
-        if colors != fishColors { fishColors = colors }
+        if colors != buddyColors { buddyColors = colors }
+        let kinds = buddies.map(\.critter.kind)
+        if kinds != buddyKinds { buddyKinds = kinds }
 
         let cameraHands = hands.filter { !$0.isPointer }
         if cameraHands.isEmpty {

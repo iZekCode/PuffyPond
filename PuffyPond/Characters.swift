@@ -46,9 +46,9 @@ func smoothStep(_ edge0: Float, _ edge1: Float, _ x: Float) -> Float {
 
 func mix(_ a: SIMD3<Float>, _ b: SIMD3<Float>, _ t: Float) -> SIMD3<Float> { a + (b - a) * t }
 
-// MARK: - Little Fish (the brush)
+// MARK: - Faces
 
-/// How a fish feels right now. Each mood drives eyes, brows, mouth, cheeks and blush.
+/// How a buddy feels right now. Each mood drives eyes, brows, mouth, cheeks and blush.
 enum Mood: Equatable {
     case calm       // swimming along
     case blowing    // concentrating, cheeks puffed, pushing out ink
@@ -57,7 +57,7 @@ enum Mood: Equatable {
     case happy      // finished a line / a creature was born: closed smiling eyes, blush
 }
 
-private struct Face {
+struct Face {
     var eyeScale: Float
     var squint: Float      // 1 = happy closed eyes
     var browLift: Float
@@ -84,199 +84,6 @@ private struct Face {
              mouth: a.mouth + (b.mouth - a.mouth) * t,
              cheeks: a.cheeks + (b.cheeks - a.cheeks) * t,
              blush: a.blush + (b.blush - a.blush) * t)
-    }
-}
-
-final class Fish {
-    let root = SCNNode()
-    private let yawNode = SCNNode()
-    private let pitchNode = SCNNode()
-    private let squashNode = SCNNode()
-    private let tailPivot = SCNNode()
-    private let bodyNode: SCNNode
-    private let bodyMaterial: SCNMaterial
-    private let finMaterial: SCNMaterial
-    private let eyes: [Toybox.Eye]
-    private var brows: [SCNNode] = []
-    private var cheekNodes: [SCNNode] = []
-    private let mouthNode: SCNNode
-    private let ink: SCNParticleSystem
-
-    private(set) var color: SIMD3<Float>
-    private var displayedColor: SIMD3<Float>
-    /// While rubbing a paint pot, the body previews the new color.
-    var colorPreview: (color: SIMD3<Float>, amount: Float)?
-    var position: Spring3
-    private var yaw: Float = -0.35
-    private var pitch: Float = 0
-    private var tailPhase: Float = 0
-    private var squash = Spring3(SIMD3(1, 1, 1))
-    private var presence = Spring1(0)
-    private var blinkStart: Float = -10
-    private var nextBlink: Float = 2
-    private var clock: Float = 0
-
-    private(set) var mood: Mood = .calm
-    private var reaction: (mood: Mood, until: Float)?
-    private var face = Face.target(for: .calm)
-
-    var speed: Float { simd_length(position.velocity) }
-
-    init(color: SIMD3<Float>, at start: SIMD3<Float>) {
-        self.color = color
-        displayedColor = color
-        position = Spring3(start)
-        bodyMaterial = Toybox.balloon(color, wobble: 0.004, speed: 6)
-        finMaterial = Toybox.balloon(color * 0.85 + SIMD3(0.15, 0.15, 0.15), wobble: 0.004, speed: 7)
-
-        root.addChildNode(yawNode)
-        yawNode.addChildNode(pitchNode)
-        pitchNode.addChildNode(squashNode)
-
-        bodyNode = Toybox.node(SCNSphere(radius: 0.16), bodyMaterial, scale: SIMD3(1.3, 1.0, 0.88))
-        squashNode.addChildNode(bodyNode)
-
-        tailPivot.simdPosition = SIMD3(-0.18, 0, 0)
-        let tail = Toybox.node(SCNSphere(radius: 0.1), finMaterial,
-                               at: SIMD3(-0.07, 0, 0), scale: SIMD3(0.6, 1.2, 0.3))
-        tailPivot.addChildNode(tail)
-        squashNode.addChildNode(tailPivot)
-
-        let dorsal = Toybox.node(SCNSphere(radius: 0.06), finMaterial,
-                                 at: SIMD3(-0.03, 0.15, 0), scale: SIMD3(1.3, 0.8, 0.28))
-        squashNode.addChildNode(dorsal)
-        for side: Float in [-1, 1] {
-            let fin = Toybox.node(SCNSphere(radius: 0.045), finMaterial,
-                                  at: SIMD3(0.0, -0.08, side * 0.13), scale: SIMD3(1.3, 0.6, 0.4))
-            squashNode.addChildNode(fin)
-        }
-
-        let browMaterial = Toybox.balloon(SIMD3(0.15, 0.1, 0.12), wobble: 0, roughness: 0.4)
-        let blush = Toybox.blush()
-        var eyes: [Toybox.Eye] = []
-        for side: Float in [-1, 1] {
-            // Each eye looks out of its own side (and a little forward).
-            let facing = SCNNode()
-            facing.simdPosition = SIMD3(0.09, 0.05, side * 0.12)
-            facing.simdEulerAngles = SIMD3(0, side > 0 ? 0.35 : Float.pi - 0.35, 0)
-            squashNode.addChildNode(facing)
-
-            let eye = Toybox.eye(radius: 0.068)
-            facing.addChildNode(eye.root)
-            eyes.append(eye)
-
-            let brow = Toybox.node(SCNCapsule(capRadius: 0.012, height: 0.075), browMaterial)
-            facing.addChildNode(brow)
-            brows.append(brow)
-
-            let cheek = SCNNode(geometry: SCNSphere(radius: 0.032))
-            cheek.geometry?.materials = [blush]
-            cheek.simdScale = SIMD3(1.3, 0.75, 0.3)
-            cheek.simdPosition = SIMD3(0.07, -0.035, side * 0.135)
-            squashNode.addChildNode(cheek)
-            cheekNodes.append(cheek)
-        }
-        self.eyes = eyes
-
-        mouthNode = Toybox.lips(radius: 0.03, color: SIMD3(1.0, 0.45, 0.55))
-        mouthNode.simdPosition = SIMD3(0.205, -0.025, 0)
-        mouthNode.simdEulerAngles = SIMD3(0, Float.pi / 2, 0)
-        squashNode.addChildNode(mouthNode)
-
-        // Ink bubbles puffing out of the mouth while drawing.
-        ink = Effects.inkBubbles()
-        let nozzle = SCNNode()
-        nozzle.simdPosition = SIMD3(0, 0, 0.03)
-        nozzle.addParticleSystem(ink)
-        mouthNode.addChildNode(nozzle)
-
-        root.simdPosition = start
-        root.simdScale = SIMD3(repeating: 0.001)
-    }
-
-    func setColor(_ newColor: SIMD3<Float>) {
-        color = newColor
-        squash.velocity += SIMD3(3, -3, 0)   // shiver of delight
-    }
-
-    /// Big gulp when it starts blowing a new balloon line.
-    func gulp() {
-        squash.velocity += SIMD3(-3, 4, 0)
-        react(.excited, for: 0.45)
-    }
-
-    /// A short-lived emotion that overrides the current activity mood.
-    func react(_ mood: Mood, for seconds: Float) {
-        reaction = (mood, clock + seconds)
-    }
-
-    func update(dt: Float, target: SIMD3<Float>, visible: Bool, painting: Bool, beatPulse: Float) {
-        clock += dt
-        presence.step(to: visible ? 1 : 0, stiffness: 160, damping: 14, dt: dt)
-        position.step(to: target, stiffness: 95, damping: 19.5, dt: dt)
-        let v = position.velocity
-
-        // Face the way it swims; passes through "looking at you" while turning around.
-        if abs(v.x) > 0.25 {
-            let goal: Float = v.x > 0 ? -0.35 : -Float.pi + 0.35
-            yaw += (goal - yaw) * min(1, dt * 7)
-        }
-        let pitchGoal = max(-0.6, min(0.6, v.y * 0.25))
-        pitch += (pitchGoal - pitch) * min(1, dt * 8)
-
-        let swim = smoothStep(0.05, 3, speed)
-        tailPhase += dt * (5 + swim * 12 + (painting ? 6 : 0))
-        tailPivot.simdEulerAngles = SIMD3(0, sin(tailPhase) * (0.35 + swim * 0.3), 0)
-
-        // Mood: activity first, short reactions on top.
-        if let r = reaction, clock > r.until { reaction = nil }
-        let activityMood: Mood = painting ? (speed > 1.8 ? .excited : .blowing) : .calm
-        mood = reaction?.mood ?? activityMood
-        face = Face.mix(face, Face.target(for: mood), min(1, dt * 12))
-
-        // Body: swim stretch, beat bounce, puffed cheeks while blowing ink.
-        let stretch = 1 + swim * 0.12
-        let beat = beatPulse * 0.07
-        let puff = face.cheeks * (0.08 + 0.04 * sin(clock * 16))
-        squash.step(to: SIMD3(stretch + beat, 1 / stretch - beat * 0.8 + puff * 0.5, 1 + puff),
-                    stiffness: 220, damping: 9, dt: dt)
-
-        var shown = color
-        if let preview = colorPreview { shown = mix(color, preview.color, preview.amount) }
-        displayedColor += (shown - displayedColor) * min(1, dt * 10)
-        bodyMaterial.diffuse.contents = Paint.platform(displayedColor)
-        finMaterial.diffuse.contents = Paint.platform(displayedColor * 0.85 + SIMD3(0.15, 0.15, 0.15))
-
-        // Eyes: blink, widen, or close into happy arcs.
-        if clock - blinkStart > nextBlink {
-            blinkStart = clock
-            nextBlink = Float.random(in: 2...5)
-        }
-        let lid = Toybox.blinkScale(clock - blinkStart) * (1 - face.squint * 0.8)
-        for (i, eye) in eyes.enumerated() {
-            eye.root.simdScale = SIMD3(face.eyeScale, lid * face.eyeScale, 1)
-            eye.pupil.isHidden = face.squint > 0.6
-            Toybox.look(eye, toward: SIMD2(0.6, pitch + (mood == .surprised ? 0.5 : 0)))
-            let r = eye.radius
-            brows[i].simdPosition = SIMD3(0, r * (1.25 + face.browLift * 0.35) * face.eyeScale, r * 0.45)
-            brows[i].simdEulerAngles = SIMD3(0, 0, Float.pi / 2 + face.browTilt)
-        }
-        for cheek in cheekNodes { cheek.opacity = CGFloat(face.blush) }
-
-        // Mouth: pout → big round "O" while pushing ink out.
-        let chomp = painting ? 0.15 * sin(clock * 14) : 0
-        let m = face.mouth + chomp
-        mouthNode.simdScale = SIMD3(m, m, 1)
-
-        ink.birthRate = painting ? 45 + CGFloat(speed) * 25 : 0
-        ink.particleColor = Paint.platform(displayedColor)
-
-        root.simdPosition = position.value + SIMD3(0, sin(clock * 2.2) * 0.02, 0)
-        yawNode.simdEulerAngles = SIMD3(0, yaw, 0)
-        pitchNode.simdEulerAngles = SIMD3(0, 0, pitch)
-        squashNode.simdScale = squash.value
-        root.simdScale = SIMD3(repeating: max(presence.value, 0.001) * (painting ? 1.08 : 1))
-        root.isHidden = presence.value < 0.01 && !visible
     }
 }
 
@@ -345,7 +152,7 @@ final class Starfish {
         root.isHidden = true
     }
 
-    /// Jumps into the hand at the fish's spot.
+    /// Jumps into the hand at the octopus's spot.
     func appear(at point: SIMD3<Float>) {
         position = Spring3(point)
         squash.velocity += SIMD3(4, -4, 0)
@@ -384,7 +191,7 @@ final class Starfish {
     }
 }
 
-// MARK: - Paint pots (dip a fish in to pick up a color)
+// MARK: - Paint pots (dip an octopus in to pick up a color)
 
 final class PaintPot {
     let root = SCNNode()
@@ -421,7 +228,7 @@ final class PaintPot {
                                scale: SIMD3(0.8, 1.4, 0.6))
         body.addChildNode(drip)
 
-        // Fills up while you rub a fish in the pot.
+        // Fills up while you rub an octopus in the pot.
         let ringMaterial = SCNMaterial()
         ringMaterial.lightingModel = .constant
         ringMaterial.diffuse.contents = Paint.platform(color)
@@ -431,7 +238,7 @@ final class PaintPot {
         progressRing.simdScale = SIMD3(repeating: 0.001)
         root.addChildNode(progressRing)
 
-        // Shows which pot is a fish's current color.
+        // Shows which pot is an octopus's current color.
         let haloMaterial = SCNMaterial()
         haloMaterial.lightingModel = .constant
         haloMaterial.diffuse.contents = Paint.platform(SIMD3(1, 1, 1))
@@ -446,8 +253,8 @@ final class PaintPot {
     }
 
     /// - Parameters:
-    ///   - rubProgress: 0…1 while a fish is being dipped here.
-    ///   - selectedCount: how many fish currently wear this color.
+    ///   - rubProgress: 0…1 while an octopus is being dipped here.
+    ///   - selectedCount: how many octopuses currently wear this color.
     func update(dt: Float, beatPulse: Float, rubProgress: Float, selectedCount: Int) {
         clock += dt
         let jiggle = rubProgress > 0 ? sin(clock * 30) * 0.05 * rubProgress : 0
@@ -466,48 +273,142 @@ final class PaintPot {
     }
 }
 
-// MARK: - A hand's buddy: fish ↔ starfish
+// MARK: - Critter pots (rub one to become that brush animal)
+
+/// A glass bubble with a little brush animal inside. Rub your critter in it to turn into that animal.
+final class CritterPot {
+    let root = SCNNode()
+    let kind: CritterKind
+    let resident: Critter
+    private let bubble: SCNNode
+    private let progressRing: SCNNode
+    private let halo: SCNNode
+    private var squash = Spring3(SIMD3(1, 1, 1))
+    private var ringScale = Spring1(0)
+    private var clock: Float = 0
+
+    init(kind: CritterKind, at position: SIMD3<Float>) {
+        self.kind = kind
+        root.simdPosition = position
+        // Thin clear glass: a faint tint with a shiny highlight, so the resident shows through.
+        let glass = SCNMaterial()
+        glass.lightingModel = .blinn
+        glass.diffuse.contents = PlatformColor(red: 0.6, green: 0.8, blue: 1.0, alpha: 0.12)
+        glass.specular.contents = PlatformColor.white
+        glass.shininess = 0.9
+        glass.transparencyMode = .aOne
+        glass.writesToDepthBuffer = false
+        bubble = Toybox.node(SCNSphere(radius: CGFloat(PaintPot.radius)), glass)
+        root.addChildNode(bubble)
+        // A little lavender stand so the bubble reads against the white canvas.
+        let stand = Toybox.balloon(SIMD3(0.55, 0.5, 0.9), wobble: 0, roughness: 0.25)
+        root.addChildNode(Toybox.node(SCNTorus(ringRadius: 0.14, pipeRadius: 0.035), stand, at: SIMD3(0, -0.19, 0)))
+
+        let ringMaterial = SCNMaterial()
+        ringMaterial.lightingModel = .constant
+        ringMaterial.diffuse.contents = PlatformColor.white
+        progressRing = SCNNode(geometry: SCNTorus(ringRadius: 0.27, pipeRadius: 0.022))
+        progressRing.geometry?.materials = [ringMaterial]
+        progressRing.simdEulerAngles = SIMD3(Float.pi / 2, 0, 0)
+        progressRing.simdScale = SIMD3(repeating: 0.001)
+        root.addChildNode(progressRing)
+
+        halo = SCNNode(geometry: SCNTorus(ringRadius: 0.22, pipeRadius: 0.014))
+        halo.geometry?.materials = [ringMaterial]
+        halo.simdPosition = SIMD3(0, -0.17, 0)
+        root.addChildNode(halo)
+
+        // The little resident swims around inside the bubble (added to the scene by the playground).
+        resident = kind.make(color: kind.signatureColor, at: position)
+        resident.sizeScale = 0.5
+    }
+
+    func bounce(_ strength: Float = 1) {
+        squash.velocity += SIMD3(3, -5, 3) * strength
+        resident.react(.surprised, for: 0.5)
+    }
+
+    /// - Parameters:
+    ///   - rubProgress: 0…1 while a buddy is rubbing this bubble.
+    ///   - selectedCount: how many buddies are this animal right now.
+    ///   - color: the paint of a buddy that's this animal, if any (otherwise the animal's own color).
+    func update(dt: Float, beatPulse: Float, rubProgress: Float, selectedCount: Int, color: SIMD3<Float>?) {
+        clock += dt
+        let jiggle = rubProgress > 0 ? sin(clock * 30) * 0.05 * rubProgress : 0
+        squash.step(to: SIMD3(1 + beatPulse * 0.04 + jiggle, 1 - beatPulse * 0.05 - jiggle, 1 + jiggle),
+                    stiffness: 260, damping: 9, dt: dt)
+        bubble.simdScale = squash.value
+        ringScale.step(to: rubProgress > 0 ? 0.35 + rubProgress * 0.65 : 0, stiffness: 300, damping: 18, dt: dt)
+        progressRing.simdScale = SIMD3(repeating: max(ringScale.value, 0.001))
+        progressRing.simdEulerAngles = SIMD3(Float.pi / 2, clock * 3, 0)
+        halo.isHidden = selectedCount == 0
+        halo.simdScale = SIMD3(repeating: 1 + Float(max(selectedCount - 1, 0)) * 0.15 + sin(clock * 4) * 0.04)
+        halo.simdEulerAngles = SIMD3(0.25, clock, 0)
+
+        let shown = color ?? kind.signatureColor
+        if simd_distance(shown, resident.color) > 0.01 { resident.setColor(shown) }
+        let c = root.simdPosition
+        let swim = SIMD3(sin(clock * 0.9) * 0.04, sin(clock * 1.3) * 0.03 - 0.02, 0.02)
+        resident.update(dt: dt, target: c + swim, visible: true, painting: false, beatPulse: beatPulse)
+    }
+}
+
+// MARK: - A hand's buddy: brush animal ↔ starfish
 
 enum BuddyMode: Equatable { case idle, swim, paint, erase }
 
+/// What a buddy is rubbing: a paint pot (new color) or a critter bubble (new brush animal).
+enum PotTarget: Equatable {
+    case color(Int)
+    case critter(CritterKind)
+}
+
 final class Buddy {
     let slot: Int
-    let fish: Fish
+    private(set) var critter: Critter
     let starfish: Starfish
     private(set) var mode: BuddyMode = .idle
     private(set) var colorIndex: Int
-    var rubbingPot: Int?
+    var rubbingPot: PotTarget?
     var rubAmount: Float = 0
 
-    init(slot: Int, colorIndex: Int, start: SIMD3<Float>) {
+    init(slot: Int, colorIndex: Int, kind: CritterKind, start: SIMD3<Float>) {
         self.slot = slot
         self.colorIndex = colorIndex
-        fish = Fish(color: Paint.colors[colorIndex % Paint.colors.count], at: start)
+        critter = kind.make(color: Paint.colors[colorIndex % Paint.colors.count], at: start)
         starfish = Starfish(at: start)
     }
 
-    /// Returns true when the buddy swapped between fish and starfish.
+    /// Returns true when the buddy swapped between its animal and the starfish.
     @discardableResult
     func setMode(_ newMode: BuddyMode) -> Bool {
         guard newMode != mode else { return false }
         let swapped = (newMode == .erase) != (mode == .erase)
-        if newMode == .erase { starfish.appear(at: fish.position.value) }
-        if mode == .erase && newMode != .erase { fish.position = Spring3(starfish.position.value) }
+        if newMode == .erase { starfish.appear(at: critter.position.value) }
+        if mode == .erase && newMode != .erase { critter.position = Spring3(starfish.position.value) }
         mode = newMode
         return swapped
     }
 
     var toolPosition: SIMD3<Float> {
-        mode == .erase ? starfish.position.value : fish.position.value
+        mode == .erase ? starfish.position.value : critter.position.value
     }
 
-    var toolSpeed: Float { mode == .erase ? starfish.speed : fish.speed }
+    var toolSpeed: Float { mode == .erase ? starfish.speed : critter.speed }
 
     func pick(_ index: Int) {
         colorIndex = index
-        fish.colorPreview = nil
-        fish.setColor(Paint.colors[index])
-        fish.react(.surprised, for: 0.35)
+        critter.colorPreview = nil
+        critter.setColor(Paint.colors[index])
+        critter.react(.surprised, for: 0.35)
+    }
+
+    /// Turn into another brush animal right where we are. Returns the old one (to remove from the scene).
+    func become(_ kind: CritterKind) -> Critter {
+        let old = critter
+        critter = kind.make(color: color, at: old.position.value)
+        critter.react(.surprised, for: 0.6)
+        return old
     }
 
     var color: SIMD3<Float> { Paint.colors[colorIndex % Paint.colors.count] }

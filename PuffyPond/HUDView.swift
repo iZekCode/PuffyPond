@@ -19,7 +19,7 @@ struct HUDView: View {
                         .shadow(color: .white, radius: 0, x: 0, y: 2)
                         .shadow(color: .black.opacity(0.15), radius: 6, y: 3)
                     hintBubble
-                    fishChips
+                    colorChips
                     Spacer()
                 }
                 .padding(.top, 14)
@@ -53,8 +53,8 @@ struct HUDView: View {
     private var hintContent: (symbol: String, text: String) {
         switch playground.hint {
         case .starting: return ("camera.fill", "Waking up the camera…")
-        case .raiseHands: return ("hand.raised.fill", "Raise both hands — a fish follows each one")
-        case .swimming: return ("hand.pinch.fill", "Pinch to draw · rub a fish in a paint pot for a new color")
+        case .raiseHands: return ("hand.raised.fill", "Raise both hands — a brush animal follows each one")
+        case .swimming: return ("hand.pinch.fill", "Pinch to draw · rub a pot for a color, a bubble for a new animal")
         case .pickingColor: return ("drop.fill", "Rub rub rub! Swipe through the pot to soak up the color")
         case .drawing: return ("paintbrush.pointed.fill", "Swoosh! Keep pinching and sweep your arm")
         case .erasing: return ("star.fill", "Starfish scrub! Bonk a creature to pop it")
@@ -66,19 +66,10 @@ struct HUDView: View {
 
     private var hintBubble: some View {
         HStack(spacing: 10) {
-            ZStack {
-                if playground.hint == .clapToLife && playground.lifeProgress > 0 {
-                    Circle()
-                        .trim(from: 0, to: playground.lifeProgress)
-                        .stroke(Color.pink, style: StrokeStyle(lineWidth: 3, lineCap: .round))
-                        .rotationEffect(.degrees(-90))
-                        .frame(width: 30, height: 30)
-                }
-                Image(systemName: hintContent.symbol)
-                    .font(.system(size: 16, weight: .bold))
-                    .symbolEffect(.bounce, value: playground.hint)
-            }
-            .frame(width: 30, height: 30)
+            Image(systemName: hintContent.symbol)
+                .font(.system(size: 16, weight: .bold))
+                .symbolEffect(.bounce, value: playground.hint)
+                .frame(width: 30, height: 30)
             Text(hintContent.text)
                 .font(.system(size: 17, weight: .bold, design: .rounded))
         }
@@ -91,18 +82,18 @@ struct HUDView: View {
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: playground.hint)
     }
 
-    // MARK: Fish colors
+    // MARK: Buddy colors
 
-    /// Each fish's current paint, so it's always clear what color you'll draw with.
-    private var fishChips: some View {
+    /// Each buddy's current paint and brush animal, so it's always clear what you'll draw with.
+    private var colorChips: some View {
         HStack(spacing: 10) {
             ForEach(0..<2, id: \.self) { slot in
-                let index = slot < playground.fishColors.count ? playground.fishColors[slot] : slot
+                let index = slot < playground.buddyColors.count ? playground.buddyColors[slot] : slot
+                let kind = slot < playground.buddyKinds.count ? playground.buddyKinds[slot] : .octopus
                 HStack(spacing: 8) {
-                    Image(systemName: "fish.fill")
+                    Image(systemName: kind.symbol)
                         .font(.system(size: 15, weight: .bold))
-                        .scaleEffect(x: slot == 0 ? -1 : 1, y: 1)
-                    Text(Paint.names[index % Paint.names.count])
+                    Text("\(Paint.names[index % Paint.names.count]) \(kind.name)")
                         .font(.system(size: 14, weight: .heavy, design: .rounded))
                 }
                 .foregroundStyle(.white)
@@ -112,6 +103,7 @@ struct HUDView: View {
                 .overlay(Capsule().stroke(.white, lineWidth: 2))
                 .shadow(color: .black.opacity(0.12), radius: 4, y: 2)
                 .symbolEffect(.bounce, value: index)
+                .symbolEffect(.bounce, value: kind)
                 .phaseAnimator([1.0, 1.18, 1.0], trigger: index) { view, scale in
                     view.scaleEffect(scale)
                 } animation: { _ in .spring(response: 0.22, dampingFraction: 0.5) }
@@ -203,17 +195,19 @@ private struct GuideCard: View {
 
     private let rows: [Row] = [
         Row(symbol: "hand.raised.fill", color: .orange, title: "Open hand = swim",
-            detail: "Each hand has a Little Fish that follows you around."),
+            detail: "Each hand has a brush animal that follows you around."),
         Row(symbol: "hand.pinch.fill", color: .blue, title: "Pinch = draw",
-            detail: "Hold a pinch and sweep your arm. The fish blows puffy balloon ink."),
+            detail: "Hold a pinch and sweep your arm. Every animal paints its own way."),
         Row(symbol: "drop.fill", color: .mint, title: "Rub a paint pot = new color",
-            detail: "Swipe a fish back and forth through a pot at the bottom until it soaks up the color."),
+            detail: "Swipe your critter back and forth through a pot at the bottom until it soaks up the color."),
+        Row(symbol: "sparkles", color: .indigo, title: "Rub a bubble = new brush animal",
+            detail: "Octopus bundle brush, snail palette knife, puffer splatter, seahorse calligraphy, jelly watercolor, frog prints."),
         Row(symbol: "star.fill", color: .pink, title: "Fist = Starfish",
-            detail: "Make a fist and your fish turns into a starfish that scrubs paint away."),
+            detail: "Make a fist and your critter turns into a starfish that scrubs paint away."),
         Row(symbol: "hands.clap.fill", color: .purple, title: "Clap = bring it to life",
-            detail: "Your drawing inflates into a 3D balloon buddy. Or just wait a moment."),
+            detail: "Your drawing inflates into a 3D balloon buddy."),
         Row(symbol: "hand.wave.fill", color: .teal, title: "Play with them",
-            detail: "Bump creatures with your fish to make them boing. A starfish pops them!"),
+            detail: "Bump creatures with your critter to make them boing. A starfish pops them!"),
     ]
 
     var body: some View {
