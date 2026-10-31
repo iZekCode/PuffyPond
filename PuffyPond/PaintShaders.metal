@@ -19,7 +19,8 @@ struct PaintParams {
     float4 frame;     // left, top (world), world units per texel, dt
     float4 size;      // width, height, stamp count, clear
     float4 tune;      // dry rate, leveling, velocity damping, gravity
-    float4 shade;     // normal strength, cavity darkening, unused, unused
+    float4 shade;     // normal strength, cavity darkening, bristle relief, paint body
+    float4 canvas;    // weave thread pitch (texels), weave depth under thin paint
 };
 
 static float hash21(int2 p) {
@@ -198,14 +199,27 @@ kernel void paintStep(texture2d<float, access::sample> paintIn [[texture(0)]],
     flowOut.write(float4(velocity, wet, relief), gid);
 }
 
+/// The linen weave under the paint (0…1): warp and weft threads passing over and under each other.
+static float weave(float2 p, float pitch) {
+    float2 q = p / pitch;
+    float2 cell = floor(q), f = q - cell;
+    float warp = sin(M_PI_F * f.x), weft = sin(M_PI_F * f.y);
+    bool warpOnTop = fmod(cell.x + cell.y, 2.0) < 0.5;
+    float top = warpOnTop ? warp * (0.75 + 0.25 * weft) : weft * (0.75 + 0.25 * warp);
+    return max(top, (warpOnTop ? weft : warp) * 0.55);
+}
+
 /// Surface height at a clamped texel: a low, flat paint body plus the bristle relief and a faint grain.
+/// Thin paint follows the canvas weave underneath; a thick coat buries it.
 static float surfaceHeight(texture2d<float, access::read> paint, texture2d<float, access::read> flow,
-                           int2 c, int2 size, float4 shade) {
+                           int2 c, int2 size, float4 shade, float4 canvas) {
     c = clamp(c, int2(0), size - 1);
     float a = paint.read(uint2(c)).a;
     float covered = saturate(a * 20.0);
     float relief = flow.read(uint2(c)).w;
-    return a * shade.w + relief * shade.z * covered + 0.006 * noise(float2(c) * 0.9) * covered;
+    float thin = covered * (1.0 - smoothstep(0.05, 0.4, a));
+    return a * shade.w + relief * shade.z * covered + 0.006 * noise(float2(c) * 0.9) * covered
+         + weave(float2(c), canvas.x) * canvas.y * thin;
 }
 
 /// Turns the simulation into what the material samples: color + coverage, a per-pixel normal map
@@ -220,7 +234,7 @@ kernel void paintShade(texture2d<float, access::read> paint [[texture(0)]],
     const int2 size = int2(P.size.xy);
     if (int(gid.x) >= size.x || int(gid.y) >= size.y) return;
     float4 p = paint.read(gid);
-    #define h(o) surfaceHeight(paint, flow, int2(gid) + (o), size, P.shade)
+    #define h(o) surfaceHeight(paint, flow, int2(gid) + (o), size, P.shade, P.canvas)
     float hc = h(int2(0));
     float hl = h(int2(-1, 0)), hr = h(int2(1, 0)), hu = h(int2(0, -1)), hd = h(int2(0, 1));
     float strength = P.shade.x;

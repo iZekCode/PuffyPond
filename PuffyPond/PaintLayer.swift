@@ -31,6 +31,7 @@ private struct PaintParams {
     var size: SIMD4<Float>      // width, height, stamp count, clear
     var tune: SIMD4<Float>      // dry rate, leveling, velocity damping, gravity
     var shade: SIMD4<Float>     // normal strength, cavity darkening, bristle relief, paint body
+    var canvas: SIMD4<Float>    // weave thread pitch (texels), weave depth under thin paint
 }
 
 /// Real-looking wet paint on the canvas, simulated on the GPU with Metal.
@@ -52,6 +53,7 @@ final class PaintLayer {
     private static let cavity: Float = 6
     private static let reliefHeight: Float = 0.12     // bristle texture depth
     private static let bodyHeight: Float = 0.35       // how much the paint's thickness itself shows
+    private static let weaveDepth: Float = 0.012      // canvas weave showing through thin paint
     private static let maxStamps = 256
 
     private let width: Int
@@ -217,7 +219,8 @@ final class PaintLayer {
             frame: SIMD4(topLeft.x, topLeft.y, worldPerTexel, dt),
             size: SIMD4(Float(width), Float(height), Float(stamps.count), needsClear ? 1 : 0),
             tune: SIMD4(Self.dryRate, Self.leveling, Self.damping, Self.gravity),
-            shade: SIMD4(Self.normalStrength, Self.cavity, Self.reliefHeight, Self.bodyHeight))
+            shade: SIMD4(Self.normalStrength, Self.cavity, Self.reliefHeight, Self.bodyHeight),
+            canvas: SIMD4(Studio.weaveTileSize / Float(Studio.threadsPerTile) / worldPerTexel, Self.weaveDepth, 0, 0))
         // A non-empty buffer even with no stamps, so the binding is always valid.
         let stampData = stamps.isEmpty
             ? [PaintStamp(segment: .zero, color: .zero, brush: .zero, motion: .zero, shape: .zero, extra: .zero)]

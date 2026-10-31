@@ -55,6 +55,7 @@ Mac extras: mouse-drag draws, double-click = bring to life, ⌥-drag or right-dr
 | `PaintLayer.swift`, `PaintShaders.metal` | Wet paint simulated on the GPU (Metal compute): brush dabs with rims and bristle grooves, the brush drags wet paint (advection), leveling, color mixing, drips and drying; drawn as one plane with a per-pixel normal map |
 | `Inflator.swift` | Drawing → 3D balloon: fills closed shapes, solves ∇²u = −1, height = √(2u) for round cross-sections; picks where the face goes |
 | `Creature.swift` | Living creatures: inflate, wander, bob, wiggle, dance on the beat, look at hands, boing, pop |
+| `Studio.swift` | The painter's studio: generated out-of-focus room backdrop and lighting environment, primed linen (weave normal map) and wooden easel textures |
 | `Toybox.swift` | Glossy balloon material with a jiggle vertex shader, eyes/lips, backdrop, particles |
 | `GrooveDSP.swift` | 118 BPM toy-pop groove synthesized live (kick, claps, hats, bass, stabs, lead over I–V–vi–IV) + all sound effects + beat clock |
 | `HUDView.swift`, `Platform.swift` | Overlay and Mac/iOS differences |
@@ -66,5 +67,6 @@ Mac extras: mouse-drag draws, double-click = bring to life, ⌥-drag or right-dr
 - Clap too sensitive / not sensitive: distances in `HandInput.detectClap`.
 - Paint feel: constants at the top of `PaintLayer` (dry rate, leveling, drag damping, gravity, normal strength).
 - Tentacle feel: `TentacleBundle.Shape` (stiffness = shape memory, drag, segment length) per animal. Each animal's brush: its `dabs` / `released` and the `BrushStyle` it uses (push, bristles, nib, watery, knife).
+- Studio look: window light (`key` spot) and camera exposure/vignette/AO in `Playground.buildWorld`; linen weave size `Studio.weaveTileSize`; weave under thin paint `PaintLayer.weaveDepth`.
 - Puffier creatures: `Inflator.puff`. Thicker lines: `Playground.strokeRadius`.
 - Tempo/melody: top of `GrooveDSP`.

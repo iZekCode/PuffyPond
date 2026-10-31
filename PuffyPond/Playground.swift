@@ -59,7 +59,6 @@ final class Playground {
     @ObservationIgnored private var flashCounter = 0
     @ObservationIgnored private var shake: Float = 0
     @ObservationIgnored private let canvasNode = SCNNode()
-    @ObservationIgnored private var canvasSquash = Spring3(SIMD3(1, 1, 1))
 
     // Layout
     @ObservationIgnored private var aspect: Float = 16.0 / 10.0
@@ -110,63 +109,90 @@ final class Playground {
     // MARK: - World building
 
     private func buildWorld() {
-        scene.background.contents = Toybox.backdrop()
-        scene.lightingEnvironment.contents = Toybox.environment()
-        scene.lightingEnvironment.intensity = 1.3
+        // A painter's studio: soft window light in an out-of-focus room.
+        scene.background.contents = Studio.backdrop()
+        scene.background.intensity = 1.7          // the room photo, brought up to the camera's exposure
+        scene.lightingEnvironment.contents = Studio.environment()
+        scene.lightingEnvironment.intensity = 1.1
 
         let camera = SCNCamera()
         camera.fieldOfView = 34
         camera.zNear = 0.1
         camera.zFar = 50
-        camera.wantsHDR = false
+        // Photographic look: tone-mapped HDR, contact shadows, a soft lens vignette and a hint of bloom.
+        camera.wantsHDR = true
+        camera.wantsExposureAdaptation = false
+        camera.exposureOffset = -0.35
+        camera.minimumExposure = -2
+        camera.maximumExposure = 2
+        camera.screenSpaceAmbientOcclusionIntensity = 0.6
+        camera.screenSpaceAmbientOcclusionRadius = 0.25
+        camera.vignettingIntensity = 0.35
+        camera.vignettingPower = 0.9
+        camera.bloomIntensity = 0.12
+        camera.bloomThreshold = 0.95
+        camera.bloomBlurRadius = 8
         cameraNode.camera = camera
         cameraNode.simdPosition = SIMD3(0, cameraY, cameraDistance)
         scene.rootNode.addChildNode(cameraNode)
 
+        // Window light from the upper left: a warm spot that rakes across the canvas (bright on the left,
+        // falling off to the right) so every ridge of paint shows, with soft shadows from the critters.
         let key = SCNLight()
-        key.type = .directional
-        key.intensity = 950
+        key.type = .spot
+        key.intensity = 1050
+        key.color = PlatformColor(red: 1, green: 0.95, blue: 0.88, alpha: 1)
+        key.spotInnerAngle = 30
+        key.spotOuterAngle = 95
+        key.attenuationStartDistance = 4
+        key.attenuationEndDistance = 22
+        key.attenuationFalloffExponent = 1.2
         key.castsShadow = true
         key.shadowMode = .deferred
-        key.shadowRadius = 10
-        key.shadowSampleCount = 16
-        key.shadowColor = PlatformColor(white: 0, alpha: 0.28)
-        key.orthographicScale = 8
-        key.shadowMapSize = CGSize(width: 2048, height: 2048)
+        key.shadowRadius = 14
+        key.shadowSampleCount = 24
+        key.shadowColor = PlatformColor(red: 0.12, green: 0.1, blue: 0.14, alpha: 0.45)
+        key.shadowMapSize = CGSize(width: 4096, height: 4096)
+        key.zNear = 1
+        key.zFar = 30
         let keyNode = SCNNode()
         keyNode.light = key
-        keyNode.simdEulerAngles = SIMD3(-0.55, -0.45, 0)
-        keyNode.simdPosition = SIMD3(-2, 3, 5)
+        keyNode.simdPosition = SIMD3(-6.5, 4.5, 6)
+        keyNode.simdLook(at: SIMD3(0.8, 0, 0))
         scene.rootNode.addChildNode(keyNode)
 
+        // Cool bounce light from the room.
         let fill = SCNLight()
         fill.type = .ambient
-        fill.intensity = 380
-        fill.color = PlatformColor(red: 1, green: 0.96, blue: 0.92, alpha: 1)
+        fill.intensity = 260
+        fill.color = PlatformColor(red: 0.9, green: 0.93, blue: 1, alpha: 1)
         let fillNode = SCNNode()
         fillNode.light = fill
         scene.rootNode.addChildNode(fillNode)
 
-        // Easel + canvas
+        // Stretched linen canvas (deep, like a gallery-wrapped canvas) on a wooden studio easel.
         let size = Self.canvasSize
-        let canvasMaterial = Toybox.plain(SIMD3(1, 1, 1), roughness: 0.85)
-        canvasMaterial.diffuse.contents = Toybox.canvasTexture()
-        canvasMaterial.diffuse.wrapS = .repeat
-        canvasMaterial.diffuse.wrapT = .repeat
-        canvasMaterial.diffuse.contentsTransform = SCNMatrix4MakeScale(11, 7, 1)
-        let board = Toybox.node(SCNBox(width: CGFloat(size.x), height: CGFloat(size.y), length: 0.08, chamferRadius: 0.02),
-                                canvasMaterial)
+        let linen = Studio.canvasMaterial(repeats: size / Studio.weaveTileSize)
+        let depth: Float = 0.16
+        let board = Toybox.node(SCNBox(width: CGFloat(size.x), height: CGFloat(size.y), length: CGFloat(depth),
+                                       chamferRadius: 0.012), linen, at: SIMD3(0, 0, Self.canvasZ - depth / 2))
         canvasNode.addChildNode(board)
-        let wood = Toybox.plain(SIMD3(0.86, 0.68, 0.45), roughness: 0.7)
-        for x: Float in [-size.x * 0.3, size.x * 0.3] {
-            let leg = Toybox.node(SCNCylinder(radius: 0.05, height: 2.6), wood,
-                                  at: SIMD3(x, -size.y * 0.5 - 0.9, -0.12))
-            leg.simdEulerAngles = SIMD3(0, 0, x > 0 ? -0.12 : 0.12)
-            canvasNode.addChildNode(leg)
+        let woodAlong = Studio.woodMaterial(grainAlongV: true)     // upright beams
+        let woodAcross = Studio.woodMaterial(grainAlongV: false)   // horizontal beams
+        func beam(_ w: Float, _ h: Float, _ d: Float, at p: SIMD3<Float>, tilt: Float = 0) {
+            let n = Toybox.node(SCNBox(width: CGFloat(w), height: CGFloat(h), length: CGFloat(d), chamferRadius: 0.012),
+                                h > w ? woodAlong : woodAcross, at: p)
+            n.simdEulerAngles = SIMD3(0, 0, tilt)
+            canvasNode.addChildNode(n)
         }
-        let ledge = Toybox.node(SCNBox(width: CGFloat(size.x * 0.8), height: 0.08, length: 0.2, chamferRadius: 0.03), wood,
-                                at: SIMD3(0, -size.y * 0.5 - 0.04, 0.04))
-        canvasNode.addChildNode(ledge)
+        let back = Self.canvasZ - depth - 0.06
+        beam(0.14, 8.4, 0.1, at: SIMD3(0, -0.6, back))                                   // mast
+        for side: Float in [-1, 1] {                                                       // splayed front legs
+            beam(0.12, 7.2, 0.09, at: SIMD3(side * 1.25, -1.6, back - 0.04), tilt: side * 0.33)
+        }
+        beam(size.x + 0.5, 0.12, 0.3, at: SIMD3(0, -size.y * 0.5 - 0.06, Self.canvasZ - 0.04))   // tray
+        beam(size.x + 0.5, 0.1, 0.05, at: SIMD3(0, -size.y * 0.5 + 0.02, Self.canvasZ + 0.1))    // tray lip
+        beam(0.6, 0.16, 0.26, at: SIMD3(0, size.y * 0.5 + 0.06, Self.canvasZ - 0.06))           // top clamp
         canvasNode.simdPosition = SIMD3(0, 0.1, 0)
         scene.rootNode.addChildNode(canvasNode)
 
@@ -189,7 +215,6 @@ final class Playground {
             critterPots.append(pot)
         }
 
-        scene.rootNode.addChildNode(Toybox.ambientBubbles())
 
         for slot in 0..<2 {
             let start = SIMD3<Float>(slot == 0 ? -1.2 : 1.2, -0.9, 0.5)
@@ -376,10 +401,6 @@ final class Playground {
         }
         creatures.removeAll { $0.isGone }
 
-        // Canvas and paint cards bounce on the beat.
-        if onBeat { canvasSquash.velocity += SIMD3(0.6, -0.6, 0) * (0.4 + energy) }
-        canvasSquash.step(to: SIMD3(1, 1, 1), stiffness: 300, damping: 14, dt: dt)
-        canvasNode.simdScale = SIMD3(canvasSquash.value.x, canvasSquash.value.y, 1)
         effects.update(dt: dt)
         shake = max(0, shake - dt * 4)
         let jolt = shake * shake * 0.05
@@ -573,7 +594,6 @@ final class Playground {
         Toybox.burst(in: scene, at: center, color: SIMD3(1, 1, 0.85), count: 40, speed: 1.6, size: 0.035, gravity: 0.5)
         audio.play(.fanfare)
         for buddy in buddies { buddy.critter.react(.happy, for: 1.2) }
-        canvasSquash.velocity += SIMD3(1.5, -1.5, 0)
 
         // Keep the pond lively but uncluttered: the oldest friend floats away.
         let living = creatures.filter { $0.phase == .alive || $0.phase == .forming }
