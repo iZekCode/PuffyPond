@@ -200,7 +200,7 @@ private struct MagicButton: View {
     var body: some View {
         Button(action: tapped) {
             ZStack {
-                Image(systemName: "sparkles")
+                Image(systemName: failed ? "exclamationmark.arrow.triangle.2.circlepath" : "sparkles")
                     .font(.system(size: 18, weight: .bold))
                     .foregroundStyle(.white)
                     .frame(width: 46, height: 46)
@@ -219,6 +219,11 @@ private struct MagicButton: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)
+    }
+
+    private var failed: Bool {
+        if case .failed = store.state { return true }
+        return false
     }
 
     private var lit: Bool {

@@ -73,6 +73,7 @@ final class MagicModelStore {
             return
         }
 
+        defer { try? FileManager.default.removeItem(at: archiveURL) }   // the 1+ GB download is a temp copy
         let (root, final, partial, sha) = (root, finalFolder, partialFolder, sha256)
         do {
             try await Task.detached {

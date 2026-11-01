@@ -78,6 +78,14 @@ struct MagicModelStoreTests {
         #expect(FileManager.default.fileExists(atPath: resources.appending(path: "vocab.json").path))
     }
 
+    @Test func downloadNeverDeletesTheSourceArchive() async throws {
+        let root = try makeRoot()
+        let source = root.appending(path: "keep.aar")
+        try Data("not an archive".utf8).write(to: source)
+        await store(root, remote: source, sha256: "00").download()
+        #expect(FileManager.default.fileExists(atPath: source.path))
+    }
+
     @Test func deleteForgetsTheModel() throws {
         let root = try makeRoot()
         let resources = root.appending(path: "\(version)/Resources")
