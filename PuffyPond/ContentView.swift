@@ -39,6 +39,7 @@ struct ContentView: View {
             }
         }
         .immersive()
+        .environment(\.uiScale, Platform.isPad ? 1.2 : 1)
         .onAppear {
             Platform.keepAwake()
             playground.setUpMagic(store: magicStore)

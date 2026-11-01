@@ -1,6 +1,9 @@
 import AVFoundation
 import Vision
 import CoreGraphics
+#if os(iOS)
+import UIKit
+#endif
 
 /// The hand joints the app cares about.
 nonisolated enum HandJoint: Int, CaseIterable, Sendable {
@@ -57,7 +60,7 @@ nonisolated final class HandTracker: NSObject, AVCaptureVideoDataOutputSampleBuf
     #if os(macOS)
     static let rotationAngle: CGFloat = 0    // Mac cameras are already landscape-upright
     #else
-    static let rotationAngle: CGFloat = 90   // portrait
+    static let rotationAngle: CGFloat = 90   // portrait (iPhone); iPad follows its rotation coordinator
     #endif
     static let mirrored = true                // behave like a mirror
 
@@ -68,6 +71,10 @@ nonisolated final class HandTracker: NSObject, AVCaptureVideoDataOutputSampleBuf
     private let sessionQueue = DispatchQueue(label: "puffy.camera.session")
     private let videoQueue = DispatchQueue(label: "puffy.camera.video", qos: .userInteractive)
     private var configured = false
+    #if os(iOS)
+    private var rotation: AVCaptureDevice.RotationCoordinator?
+    private var rotationObserver: NSKeyValueObservation?
+    #endif
     private let request: VNDetectHumanHandPoseRequest = {
         let request = VNDetectHumanHandPoseRequest()
         request.maximumHandCount = 2
@@ -148,11 +155,32 @@ nonisolated final class HandTracker: NSObject, AVCaptureVideoDataOutputSampleBuf
                 connection.isVideoMirrored = Self.mirrored
             }
         }
+        #if os(iOS)
+        if let connection = output.connection(with: .video) { keepUpright(connection, device: device) }
+        #endif
         preferHighFrameRate(device)
         session.commitConfiguration()
         configured = true
         return true
     }
+
+    #if os(iOS)
+    /// The iPad is used in landscape on either side, and its camera sits on a different edge than the
+    /// iPhone's, so the system says which way is up and we follow it when the iPad is turned around.
+    private func keepUpright(_ connection: AVCaptureConnection, device: AVCaptureDevice) {
+        guard UIDevice.current.userInterfaceIdiom == .pad else { return }
+        let coordinator = AVCaptureDevice.RotationCoordinator(device: device, previewLayer: nil)
+        rotation = coordinator
+        let apply = { (angle: CGFloat) in
+            if connection.isVideoRotationAngleSupported(angle) { connection.videoRotationAngle = angle }
+        }
+        apply(coordinator.videoRotationAngleForHorizonLevelCapture)
+        rotationObserver = coordinator.observe(\.videoRotationAngleForHorizonLevelCapture) { [sessionQueue] coordinator, _ in
+            let angle = coordinator.videoRotationAngleForHorizonLevelCapture
+            sessionQueue.async { apply(angle) }
+        }
+    }
+    #endif
 
     /// Tracking at 60 fps roughly halves input latency. Falls back to the default 30 fps.
     private func preferHighFrameRate(_ device: AVCaptureDevice) {

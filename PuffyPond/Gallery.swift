@@ -320,6 +320,7 @@ struct GalleryView: View {
     @State private var index: Int
     @State private var hall = GalleryHall()
     @State private var confirmingRemoval = false
+    @Environment(\.uiScale) private var scale
     private let cheerOnOpen: Bool
 
     init(gallery: Gallery, startAt index: Int = 0, justHung: Bool = false, close: @escaping () -> Void) {
@@ -352,10 +353,11 @@ struct GalleryView: View {
                     Spacer()
                     VStack(spacing: 4) {
                         Text("Puffy Pond Gallery")
-                            .font(.system(size: 26, weight: .black, design: .rounded))
+                            .font(.system(size: 26 * scale, weight: .black, design: .rounded))
                         if let current {
-                            Text(current.date, format: .dateTime.month(.wide).day().hour().minute())
-                                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                            Text("\(current.date.formatted(.dateTime.month(.wide).day().hour().minute()))"
+                                 + (gallery.paintings.count > 1 ? " · \(index + 1) of \(gallery.paintings.count)" : ""))
+                                .font(.system(size: 14 * scale, weight: .semibold, design: .rounded))
                                 .foregroundStyle(.secondary)
                         }
                     }
@@ -368,25 +370,18 @@ struct GalleryView: View {
                         .opacity(current == nil ? 0 : 1)
                 }
                 Spacer()
-                HStack {
-                    RoundButton(symbol: "chevron.left", tint: .indigo) { step(-1) }
-                        .opacity(index > 0 ? 1 : 0)
-                    Spacer()
-                    if gallery.paintings.count > 1 {
-                        Text("\(index + 1) of \(gallery.paintings.count)")
-                            .font(.system(size: 15, weight: .heavy, design: .rounded))
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 7)
-                            .background(.white.opacity(0.85), in: Capsule())
-                            .foregroundStyle(Color(red: 0.25, green: 0.2, blue: 0.35))
-                    }
-                    Spacer()
-                    RoundButton(symbol: "chevron.right", tint: .indigo) { step(1) }
-                        .opacity(index < gallery.paintings.count - 1 ? 1 : 0)
-                }
-                .padding(.bottom, 120)
             }
-            .padding(16)
+            .padding(16 * scale)
+
+            // Page buttons sit at the middle of the two sides, where thumbs rest on a wide screen.
+            HStack {
+                RoundButton(symbol: "chevron.left", tint: .indigo) { step(-1) }
+                    .opacity(index > 0 ? 1 : 0)
+                Spacer()
+                RoundButton(symbol: "chevron.right", tint: .indigo) { step(1) }
+                    .opacity(index < gallery.paintings.count - 1 ? 1 : 0)
+            }
+            .padding(.horizontal, 16 * scale)
         }
         .confirmationDialog("Take this painting down?", isPresented: $confirmingRemoval, titleVisibility: .visible) {
             Button("Take it down", role: .destructive, action: removeCurrent)

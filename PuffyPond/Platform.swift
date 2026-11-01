@@ -39,6 +39,15 @@ enum Platform {
         #endif
     }
 
+    /// iPad is a landscape-only, finger-sized screen; everything else (Mac, iPhone) keeps the base sizes.
+    static var isPad: Bool {
+        #if os(iOS)
+        UIDevice.current.userInterfaceIdiom == .pad
+        #else
+        false
+        #endif
+    }
+
     static func configure(_ connection: AVCaptureConnection?) {
         guard let connection else { return }
         if connection.isVideoRotationAngleSupported(HandTracker.rotationAngle) {
@@ -49,6 +58,11 @@ enum Platform {
             connection.isVideoMirrored = HandTracker.mirrored
         }
     }
+}
+
+extension EnvironmentValues {
+    /// How much bigger than the base sizes controls and text are drawn (1.2 on iPad).
+    @Entry var uiScale: CGFloat = 1
 }
 
 extension View {
@@ -238,10 +252,31 @@ struct CameraPreview: UIViewRepresentable {
     final class PreviewView: UIView {
         override class var layerClass: AnyClass { AVCaptureVideoPreviewLayer.self }
         var previewLayer: AVCaptureVideoPreviewLayer { layer as! AVCaptureVideoPreviewLayer }
+        private var rotation: AVCaptureDevice.RotationCoordinator?
+        private var rotationObserver: NSKeyValueObservation?
 
         override func layoutSubviews() {
             super.layoutSubviews()
             Platform.configure(previewLayer.connection)
+            followDeviceRotation()
+        }
+
+        /// Keeps the preview upright when the iPad is turned between the two landscape sides.
+        private func followDeviceRotation() {
+            guard rotation == nil,
+                  let device = (previewLayer.session?.inputs.first as? AVCaptureDeviceInput)?.device else { return }
+            let coordinator = AVCaptureDevice.RotationCoordinator(device: device, previewLayer: previewLayer)
+            rotation = coordinator
+            apply(coordinator.videoRotationAngleForHorizonLevelPreview)
+            rotationObserver = coordinator.observe(\.videoRotationAngleForHorizonLevelPreview) { [weak self] coordinator, _ in
+                let angle = coordinator.videoRotationAngleForHorizonLevelPreview
+                DispatchQueue.main.async { self?.apply(angle) }
+            }
+        }
+
+        private func apply(_ angle: CGFloat) {
+            guard let connection = previewLayer.connection, connection.isVideoRotationAngleSupported(angle) else { return }
+            connection.videoRotationAngle = angle
         }
     }
 
