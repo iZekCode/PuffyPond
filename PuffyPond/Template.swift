@@ -3,8 +3,8 @@ import simd
 
 // MARK: - Templates (a faint dotted pond animal to trace)
 
-/// A shape kids can trace when they don't know what to draw. Only a guide: the creature that comes
-/// to life is always made from their own strokes, never snapped to the outline.
+/// A shape kids can trace when they don't know what to draw. Only a guide: it never goes into the
+/// gallery photo, only their own paint does.
 enum TemplateKind: CaseIterable {
     case fish, turtle, duck
 

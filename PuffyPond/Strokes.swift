@@ -35,7 +35,7 @@ struct StrokePoint {
 }
 
 /// The path of one brush stroke: what the fish drew, in which color, with which brush animal.
-/// (What you *see* is the PaintLayer; this is what gets inflated into a creature.)
+/// (What you *see* is the PaintLayer; this tracks what's been drawn so far, for erasing.)
 final class Stroke {
     let node = SCNNode()
     let color: SIMD3<Float>

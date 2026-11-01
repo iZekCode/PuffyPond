@@ -95,6 +95,8 @@ class Critter {
     var squash = Spring3(SIMD3(1, 1, 1))
     private(set) var presence = Spring1(0)
     private(set) var clock: Float = 0
+    /// Where the eyes drift on their own, on top of following the motion (gallery visitors look up).
+    var gazeBias = SIMD2<Float>.zero
     /// Turn sideways toward the swim direction (profile animals) instead of facing the camera.
     var turnsToMotion = false
     private var yaw: Float = -0.35
@@ -245,7 +247,7 @@ class Critter {
         }
         let lid = Toybox.blinkScale(clock - blinkStart) * (1 - face.squint * 0.8)
         let gaze = SIMD2(max(-0.8, min(0.8, v.x * 0.3)) * (turnsToMotion ? 0 : 1) + (turnsToMotion ? 0.6 : 0),
-                         max(-0.8, min(0.8, v.y * 0.3)) + (mood == .surprised ? 0.4 : 0))
+                         max(-0.8, min(0.8, v.y * 0.3)) + (mood == .surprised ? 0.4 : 0)) + gazeBias
         for (i, eye) in eyes.enumerated() {
             eye.root.simdScale = SIMD3(face.eyeScale, lid * face.eyeScale, 1)
             eye.pupil.isHidden = face.squint > 0.6

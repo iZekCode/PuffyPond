@@ -56,7 +56,7 @@ struct PalmReading {
     }
 }
 
-/// Turns camera frames into two smooth, predicted hands, and spots claps.
+/// Turns camera frames into two smooth, predicted hands.
 final class HandInput {
     struct Tracked {
         let id: Int
@@ -79,14 +79,6 @@ final class HandInput {
 
     private(set) var tracked: [Tracked] = []
     private var nextID = 1
-    private var imageAspect: Float = 4.0 / 3.0
-
-    // Clap detection
-    private var lastApartTime: Double = 0
-    private var lastClapTime: Double = 0
-    private var lastPairDistance: Float = 1
-    private var lastPairTime: Double = 0
-    var onClap: (() -> Void)?
 
     private func viewUV(fromImage p: SIMD2<Float>) -> SIMD2<Float> {
         (p - Self.reachMin) / (Self.reachMax - Self.reachMin)
@@ -94,7 +86,6 @@ final class HandInput {
 
     func ingest(_ frame: HandFrame) {
         let now = CACurrentMediaTime()
-        imageAspect = frame.imageAspect
         let readings = frame.hands.compactMap { PalmReading($0, aspect: frame.imageAspect) }
 
         var available = Array(tracked.indices)
@@ -121,7 +112,6 @@ final class HandInput {
             }
         }
         tracked.removeAll { now - $0.lastSample > 0.6 }
-        detectClap(now: now, visibleCount: readings.count)
     }
 
     private func update(_ hand: inout Tracked, with reading: PalmReading, now: Double) {
@@ -161,31 +151,6 @@ final class HandInput {
         let speed = simd_length(v)
         hand.targetVelocity = speed > 6 ? v * (6 / speed) : v
         hand.lastSample = now
-    }
-
-    private func detectClap(now: Double, visibleCount: Int) {
-        let fresh = tracked.filter { now - $0.lastSample < 0.15 }
-        if fresh.count == 2 {
-            let scale = SIMD2<Float>(imageAspect, 1)
-            let d = simd_distance(fresh[0].palmImage * scale, fresh[1].palmImage * scale)
-            if d > 0.38 { lastApartTime = now }
-            let closing = now - lastApartTime < 0.8
-            if d < 0.17 && closing && now - lastClapTime > 1.2 {
-                fireClap(now)
-            }
-            lastPairDistance = d
-            lastPairTime = now
-        } else if visibleCount <= 1 && now - lastPairTime < 0.2 && lastPairDistance < 0.3
-                    && now - lastApartTime < 0.8 && now - lastClapTime > 1.2 {
-            // Palms overlapping often merge into a single detection.
-            fireClap(now)
-        }
-    }
-
-    private func fireClap(_ now: Double) {
-        lastClapTime = now
-        lastApartTime = 0
-        onClap?()
     }
 
     /// Render-rate smoothing with a little prediction to hide camera latency.

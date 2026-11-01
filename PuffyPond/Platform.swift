@@ -79,6 +79,12 @@ final class FrameDriver: NSObject {
         self.link = link
     }
 
+    func stop() {
+        link?.invalidate()
+        link = nil
+        lastTimestamp = 0
+    }
+
     @objc private func tick(_ link: CADisplayLink) {
         let dt = lastTimestamp == 0 ? 1.0 / 60 : link.timestamp - lastTimestamp
         lastTimestamp = link.timestamp
@@ -113,7 +119,7 @@ struct PlaygroundView: NSViewRepresentable {
     func updateNSView(_ nsView: PlaygroundSCNView, context: Context) {}
 }
 
-/// Mouse drag paints with the left buddy (hold ⌥ or right-drag to erase); double-click brings it to life.
+/// Mouse drag paints with the left buddy (hold ⌥ or right-drag to erase).
 final class PlaygroundSCNView: SCNView {
     weak var playground: Playground?
 
@@ -133,10 +139,6 @@ final class PlaygroundSCNView: SCNView {
     }
 
     override func mouseDown(with event: NSEvent) {
-        if event.clickCount == 2 {
-            playground?.bringToLife(reason: .button)
-            return
-        }
         playground?.pointerErases = event.modifierFlags.contains(.option)
         playground?.pointerBegan(normalized(event))
     }

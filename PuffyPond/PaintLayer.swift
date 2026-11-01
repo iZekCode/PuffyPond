@@ -42,7 +42,6 @@ private struct PaintParams {
 /// - It is drawn as one flat plane with a per-pixel normal map, so the light rakes across every ridge.
 final class PaintLayer {
     let node = SCNNode()
-    var trembling = false
 
     // Tuning
     private static let dryRate: Float = 0.9           // 1/s: how fast wet paint sets
@@ -73,7 +72,6 @@ final class PaintLayer {
     private var stamps: [PaintStamp] = []
     private var needsClear = true
     private var settleTime: Float = 0                 // keep simulating while paint may still move
-    private var dissolve: Float?
     private let surface: SCNNode
 
     init(center: SIMD2<Float>, size: SIMD2<Float>, z: Float, pixelsAcross: Int = PaintLayer.defaultResolution) {
@@ -171,11 +169,6 @@ final class PaintLayer {
         stamps.removeAll()
     }
 
-    /// Fade the paint away (it has become a creature).
-    func dissolveAway() {
-        dissolve = 1
-    }
-
     /// Per-frame world displacement → texels/s for the brush drag (texture y runs downward).
     private var lastDT: Float = 1.0 / 60
     private func texelVelocity(_ d: SIMD2<Float>) -> SIMD2<Float> {
@@ -190,21 +183,6 @@ final class PaintLayer {
     func update(dt: Float) {
         lastDT = dt
         simulate(dt: dt)
-
-        if let d = dissolve {
-            let next = d - dt * 4
-            if next <= 0 {
-                clear()
-                node.opacity = 1
-                dissolve = nil
-            } else {
-                node.opacity = CGFloat(next)
-                dissolve = next
-            }
-        }
-        node.simdPosition = trembling
-            ? SIMD3(Float.random(in: -0.012...0.012), Float.random(in: -0.01...0.01), 0)
-            : .zero
     }
 
     private func simulate(dt: Float) {
