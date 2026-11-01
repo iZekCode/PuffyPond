@@ -1,10 +1,14 @@
 import SwiftUI
 import AVFoundation
 
-/// Light, friendly overlay: a hint bubble, the "bring to life" countdown, camera preview, and a few buttons.
+/// Light, friendly overlay: a hint bubble, camera preview, and a few buttons.
 struct HUDView: View {
     @Bindable var playground: Playground
     let session: AVCaptureSession
+    let magicStore: MagicModelStore
+    let paintingCount: Int
+    let finish: () -> Void
+    let openGallery: () -> Void
 
     var body: some View {
         ZStack {
@@ -57,11 +61,10 @@ struct HUDView: View {
         case .swimming: return ("hand.pinch.fill", "Pinch to draw · rub a pot for a color, a bubble for a new animal")
         case .pickingColor: return ("drop.fill", "Rub rub rub! Swipe through the pot to soak up the color")
         case .drawing: return ("paintbrush.pointed.fill", "Swoosh! Keep pinching and sweep your arm")
-        case .erasing: return ("star.fill", "Starfish scrub! Bonk a creature to pop it")
-        case .clapToLife: return ("hands.clap.fill", "Clap to bring it to life!")
+        case .erasing: return ("star.fill", "Starfish scrub! Wipe the paint away")
+        case .readyToHang: return ("photo.artframe", "All done? Tap the frame to hang it in the gallery")
         case .tracing: return ("scribble.variable", "Pinch and follow the dotted line · fist to wipe it away")
-        case .transforming: return ("sparkles", "Here it comes…")
-        case .touchMode: return ("hand.draw.fill", "Drag to draw · double-click to bring to life")
+        case .touchMode: return ("hand.draw.fill", "Drag to draw · tap the frame when you're done")
         }
     }
 
@@ -117,8 +120,14 @@ struct HUDView: View {
 
     private var controls: some View {
         HStack(spacing: 10) {
+            if let magic = playground.magic {
+                MagicButton(magic: magic, store: magicStore)
+            }
             if playground.hasDrawing {
-                RoundButton(symbol: "sparkles", tint: .pink) { playground.bringToLife(reason: .button) }
+                RoundButton(symbol: "photo.artframe", tint: .pink, action: finish)
+            }
+            if paintingCount > 0 {
+                RoundButton(symbol: "building.columns.fill", tint: .orange, action: openGallery)
             }
             #if os(iOS)
             RoundButton(symbol: playground.pointerErases ? "star.fill" : "paintbrush.pointed.fill",
@@ -164,7 +173,7 @@ struct HUDView: View {
     }
 }
 
-private struct RoundButton: View {
+struct RoundButton: View {
     let symbol: String
     let tint: Color
     let action: () -> Void
@@ -180,6 +189,61 @@ private struct RoundButton: View {
                 .shadow(color: tint.opacity(0.4), radius: 6, y: 3)
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// Turns Magic on and off. Before the model is downloaded it downloads it, with a progress ring.
+private struct MagicButton: View {
+    let magic: MagicController
+    let store: MagicModelStore
+
+    var body: some View {
+        Button(action: tapped) {
+            ZStack {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 46, height: 46)
+                    .background(Color.cyan.gradient.opacity(lit ? 1 : 0.55), in: Circle())
+                    .overlay(Circle().stroke(.white, lineWidth: 2.5))
+                    .symbolEffect(.variableColor.iterative, isActive: magic.isGenerating)
+                if case .downloading(let progress) = store.state {
+                    Circle()
+                        .trim(from: 0, to: max(progress, 0.03))
+                        .stroke(.white, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                        .frame(width: 38, height: 38)
+                }
+            }
+            .shadow(color: Color.cyan.opacity(lit ? 0.6 : 0.3), radius: lit ? 10 : 6, y: 3)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+    }
+
+    private var lit: Bool {
+        if case .ready = store.state { return magic.isOn }
+        return false
+    }
+
+    private var label: String {
+        switch store.state {
+        case .notDownloaded: return "Download Magic"
+        case .downloading: return "Downloading Magic"
+        case .ready: return magic.isOn ? "Turn Magic off" : "Turn Magic on"
+        case .failed(let message): return "Magic download failed: \(message). Tap to retry"
+        }
+    }
+
+    private func tapped() {
+        switch store.state {
+        case .notDownloaded, .failed:
+            Task { await store.download() }
+        case .downloading:
+            break
+        case .ready:
+            magic.isOn.toggle()
+        }
     }
 }
 
@@ -205,10 +269,8 @@ private struct GuideCard: View {
             detail: "Octopus bundle brush, snail palette knife, puffer splatter, seahorse calligraphy, jelly watercolor, frog prints."),
         Row(symbol: "star.fill", color: .pink, title: "Fist = Starfish",
             detail: "Make a fist and your critter turns into a starfish that scrubs paint away."),
-        Row(symbol: "hands.clap.fill", color: .purple, title: "Clap = bring it to life",
-            detail: "Your drawing comes alive. The animal that painted most of it decides: plush, clay, spiky puffer, swimmer, jelly or hopper."),
-        Row(symbol: "hand.wave.fill", color: .teal, title: "Play with them",
-            detail: "Bump creatures with your critter to make them boing. A starfish pops them!"),
+        Row(symbol: "photo.artframe", color: .purple, title: "All done? Hang it up",
+            detail: "Tap the frame and your painting goes into the gallery, where the critters come to admire it."),
     ]
 
     var body: some View {

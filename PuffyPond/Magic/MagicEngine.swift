@@ -3,8 +3,15 @@ import CoreML
 import CoreGraphics
 import StableDiffusion
 
+/// What the controller needs from a model runner; the real one is `MagicEngine`.
+nonisolated protocol MagicGenerating: Sendable {
+    func load() async throws
+    func generate(_ inputs: MagicInputs, prompt: MagicPrompt, seed: UInt32) async throws -> CGImage?
+    func unload() async
+}
+
 /// Runs the on-device diffusion pipeline. All model work happens inside this actor, off the main actor.
-actor MagicEngine {
+actor MagicEngine: MagicGenerating {
     enum Failure: LocalizedError {
         case controlNetMissing
         case notLoaded

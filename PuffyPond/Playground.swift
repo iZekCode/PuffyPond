@@ -1,5 +1,6 @@
 import SwiftUI
 import SceneKit
+import Metal
 import Observation
 import QuartzCore
 import simd
@@ -7,7 +8,7 @@ import simd
 nonisolated enum CameraStatus: Equatable { case starting, running, denied, unavailable }
 
 nonisolated enum Hint: Equatable {
-    case starting, raiseHands, swimming, pickingColor, drawing, erasing, clapToLife, tracing, transforming, touchMode
+    case starting, raiseHands, swimming, pickingColor, drawing, erasing, readyToHang, tracing, touchMode
 }
 
 /// "You picked a color" moment for the HUD.
@@ -17,7 +18,7 @@ nonisolated struct ColorFlash: Equatable {
     let id: Int
 }
 
-/// The whole toy: the 3D world, the two hand buddies, puffy strokes, living creatures, and the groove.
+/// The whole toy: the 3D world, the two hand buddies, wet paint on the canvas, and the groove.
 @Observable
 final class Playground {
     // MARK: HUD state
@@ -27,13 +28,16 @@ final class Playground {
     var musicOn = true
     var hint: Hint = .starting
     var hasDrawing = false
-    var creatureCount = 0
+    /// The gallery is showing: hands stop painting until the kids come back to the easel.
+    var isAway = false
     var previewHands: [[CGPoint]] = []
     var imageAspect: CGFloat = 4.0 / 3.0
     var pointerErases = false
     var buddyColors: [Int] = [0, 1]
     var buddyKinds: [CritterKind] = [.octopus, .seahorse]
     var colorFlash: ColorFlash?
+    /// AI "magic" mode; nil until the app hands over its model store (see `setUpMagic`).
+    private(set) var magic: MagicController?
 
     // MARK: World
     @ObservationIgnored let effects = Effects(scene: SCNScene())
@@ -47,7 +51,6 @@ final class Playground {
     @ObservationIgnored private var activeStroke: [Int: Stroke] = [:]
     @ObservationIgnored private var lastBead: [Int: SIMD2<Float>] = [:]
     @ObservationIgnored private var blipDistance: [Int: Float] = [:]
-    @ObservationIgnored private var creatures: [Creature] = []
     @ObservationIgnored private var pots: [PaintPot] = []
     @ObservationIgnored private var critterPots: [CritterPot] = []
     @ObservationIgnored private var templatePots: [TemplatePot] = []
@@ -62,6 +65,13 @@ final class Playground {
     @ObservationIgnored private var flashCounter = 0
     @ObservationIgnored private var shake: Float = 0
     @ObservationIgnored private let canvasNode = SCNNode()
+    @ObservationIgnored private var canvasBoard: SCNNode?
+    @ObservationIgnored private var studioLights: [SCNNode] = []
+    @ObservationIgnored private let magicOverlay = MagicOverlay()
+    /// Counts paintings so Magic keeps one seed per painting (the picture doesn't jump around between runs).
+    @ObservationIgnored private var paintingNumber = 0
+    /// The bare board, photographed once, so Magic can tell paint from canvas weave.
+    @ObservationIgnored private var blankPhoto: CGImage?
 
     // Layout
     @ObservationIgnored private var aspect: Float = 16.0 / 10.0
@@ -81,7 +91,6 @@ final class Playground {
     // Timing
     @ObservationIgnored private var lastTime: Double = 0
     @ObservationIgnored private var clock: Float = 0
-    @ObservationIgnored private var transforming = false
     @ObservationIgnored private var lastSqueak: Double = 0
     @ObservationIgnored private var lastBeatIndex = -1
     @ObservationIgnored private var energy: Float = 0
@@ -93,7 +102,6 @@ final class Playground {
 
     init() {
         buildWorld()
-        input.onClap = { [weak self] in self?.bringToLife(reason: .clap) }
         frameDriver.onFrame = { [weak self] dt in self?.tick(dt: Float(dt)) }
     }
 
@@ -104,6 +112,24 @@ final class Playground {
 
     func pause() {
         audio.pause()
+        magic?.pause()
+    }
+
+    /// Gives the easel its AI "magic" brain. Does nothing on devices that can't run it.
+    func setUpMagic(store: MagicModelStore) {
+        guard magic == nil, MagicSupport.isSupported else { return }
+        scene.rootNode.addChildNode(magicOverlay.node)
+        blankPhoto = photographCanvas(pixels: MagicController.photoWidth)
+        magic = MagicController(
+            overlay: magicOverlay, store: store,
+            photograph: { [weak self] width in self?.photographCanvas(pixels: width) },
+            blank: { [weak self] in self?.blankPhoto },
+            context: { [weak self] in
+                guard let self else { return (nil, []) }
+                let brushes = strokes.map(\.brush)
+                return (template?.kind, brushes.isEmpty ? buddyKinds : brushes)
+            },
+            seed: { [weak self] in UInt32(truncatingIfNeeded: self?.paintingNumber ?? 0) })
     }
 
     func toggleMusic() {
@@ -165,6 +191,7 @@ final class Playground {
         keyNode.simdPosition = SIMD3(-6.5, 4.5, 6)
         keyNode.simdLook(at: SIMD3(0.8, 0, 0))
         scene.rootNode.addChildNode(keyNode)
+        studioLights.append(keyNode)
 
         // Cool bounce light from the room.
         let fill = SCNLight()
@@ -174,6 +201,7 @@ final class Playground {
         let fillNode = SCNNode()
         fillNode.light = fill
         scene.rootNode.addChildNode(fillNode)
+        studioLights.append(fillNode)
 
         // Stretched linen canvas (deep, like a gallery-wrapped canvas) on a wooden studio easel.
         let size = Self.canvasSize
@@ -182,6 +210,7 @@ final class Playground {
         let board = Toybox.node(SCNBox(width: CGFloat(size.x), height: CGFloat(size.y), length: CGFloat(depth),
                                        chamferRadius: 0.012), linen, at: SIMD3(0, 0, Self.canvasZ - depth / 2))
         canvasNode.addChildNode(board)
+        canvasBoard = board
         let woodAlong = Studio.woodMaterial(grainAlongV: true)     // upright beams
         let woodAcross = Studio.woodMaterial(grainAlongV: false)   // horizontal beams
         func beam(_ w: Float, _ h: Float, _ d: Float, at p: SIMD3<Float>, tilt: Float = 0) {
@@ -236,7 +265,7 @@ final class Playground {
         }
     }
 
-    /// Fit the canvas (plus room for creatures) into any window shape.
+    /// Fit the canvas (plus the pot columns) into any window shape.
     func layout(size: CGSize) {
         guard size.width > 0, size.height > 0 else { return }
         aspect = Float(size.width / size.height)
@@ -262,6 +291,7 @@ final class Playground {
     // MARK: - Input
 
     func ingest(_ frame: HandFrame) {
+        guard !isAway else { return }
         input.ingest(frame)
         let aspect = CGFloat(frame.imageAspect)
         if abs(aspect - imageAspect) > 0.001 { imageAspect = aspect }
@@ -378,46 +408,8 @@ final class Playground {
         }
         template?.update()
 
-        // Bump creatures with your buddies.
-        for buddy in buddies where buddy.mode != .idle {
-            let tool = buddy.toolPosition
-            for creature in creatures where creature.isInteractive {
-                let d = simd_distance(SIMD2(tool.x, tool.y), SIMD2(creature.position.value.x, creature.position.value.y))
-                guard d < creature.radius * 0.85 + 0.12 else { continue }
-                if buddy.mode == .erase {
-                    creature.pop()
-                } else if buddy.toolSpeed > 0.4,
-                          creature.poke(from: tool, strength: min(buddy.toolSpeed / 3, 1)) {
-                    audio.play(.boing, a: min(creature.radius / 1.2, 1), pan: panFor(creature.position.value.x))
-                    buddy.critter.react(.surprised, for: 0.5)
-                }
-            }
-        }
-
         paintLayer.update(dt: dt)
-
-        // Creatures live their lives.
-        let bounds = halfSize(atZ: 1)
-        let lookTarget = buddies.filter { $0.mode != .idle }.first?.toolPosition
-        for i in creatures.indices {
-            for j in creatures.indices where j != i {
-                creatures[i].separate(from: creatures[j], dt: dt)
-            }
-        }
-        for creature in creatures {
-            if creature.update(dt: dt, beatPulse: beatPulse, lookAt: lookTarget, halfSize: bounds, cameraY: cameraY) {
-                effects.pop(at: creature.position.value, radius: creature.radius, colors: creature.palette,
-                            eyeRadius: creature.currentEyeRadius, eyes: creature.eyeWorldPositions)
-                audio.play(.pop, pan: panFor(creature.position.value.x))
-                audio.play(.sparkle)
-                shake = 1
-                for buddy in buddies { buddy.critter.react(.surprised, for: 0.6) }
-            }
-        }
-        for creature in creatures where creature.isGone {
-            creature.root.removeFromParentNode()
-        }
-        creatures.removeAll { $0.isGone }
+        magic?.tick(at: now)
 
         effects.update(dt: dt)
         shake = max(0, shake - dt * 4)
@@ -451,7 +443,7 @@ final class Playground {
             let c = pot.root.simdPosition
             return simd_distance(p, SIMD2(c.x, c.y + 0.04)) < PaintPot.radius + 0.14
         }
-        guard onCanvas, !onTemplatePot, !transforming else {
+        guard onCanvas, !onTemplatePot else {
             finishStroke(slot: slot)
             return
         }
@@ -486,10 +478,10 @@ final class Playground {
             strokes.append(stroke)
             activeStroke[slot] = stroke
             lastBead[slot] = p
+            magic?.strokeBegan(at: now)
             buddy.critter.gulp()
             audio.play(.blip, a: (p.y - center.y) / Self.canvasSize.y + 0.5, pan: panFor(p.x))
         }
-        if strokes.reduce(0, { $0 + $1.points.count }) > 2600 { bringToLife(reason: .full) }
     }
 
     private func lay(_ dabs: [BrushDab], color: SIMD3<Float>, seed: Float) {
@@ -505,6 +497,7 @@ final class Playground {
             buddy.critter.react(.happy, for: 0.7)   // proud of that line
             // Some brushes paint when you let go (the pufferfish bursts).
             lay(buddy.critter.released(), color: buddy.color, seed: Float(slot) * 7.7 + Float(strokes.count))
+            magic?.canvasChanged(at: CACurrentMediaTime())
         }
         activeStroke[slot] = nil
         lastBead[slot] = nil
@@ -554,6 +547,7 @@ final class Playground {
         }
         strokes = newStrokes
         if erasedAny {
+            magic?.canvasChanged(at: now)
             buddy.starfish.scrubbed()
             if now - lastSqueak > 0.09 {
                 lastSqueak = now
@@ -564,82 +558,66 @@ final class Playground {
         }
     }
 
-    // MARK: - Bring the drawing to life
+    // MARK: - Hang it in the gallery
 
-    enum LifeReason { case clap, full, button }
-
-    func bringToLife(reason: LifeReason) {
-        guard !transforming else { return }
+    /// Photographs the finished painting (just the canvas and its paint, lit like the studio) and
+    /// clears the easel for the next one. Nil when there's nothing painted yet.
+    func finishPainting() -> CGImage? {
         guard !strokes.isEmpty else {
-            if reason == .clap { audio.play(.swap) }
-            return
+            audio.play(.swap)
+            return nil
         }
-        transforming = true
-        // The guide fades away; only the child's own strokes become the creature.
-        template?.fadeAway()
-        template = nil
-        let formed = strokes
-        strokes = []
-        activeStroke = [:]
-        lastBead = [:]
-        let input = formed.map { stroke in
-            InflateStroke(points: stroke.points.map(\.p), radius: stroke.radius, color: stroke.color)
-        }
-        let kind = Self.dominantBrush(formed)
-        audio.play(.rise)
-        // Anticipation: the strokes jiggle and swell before the reveal.
-        for stroke in formed {
-            stroke.node.runAction(.repeatForever(.sequence([
-                .moveBy(x: 0.012, y: 0.008, z: 0.02, duration: 0.05),
-                .moveBy(x: -0.012, y: -0.008, z: -0.02, duration: 0.05),
-            ])), forKey: "shake")
-        }
-        paintLayer.trembling = true
-        let started = CACurrentMediaTime()
-        Task {
-            let mesh = await Task.detached(priority: .userInitiated) { Inflator.inflate(input) }.value
-            let waited = CACurrentMediaTime() - started
-            if waited < 0.7 {
-                try? await Task.sleep(nanoseconds: UInt64((0.7 - waited) * 1_000_000_000))
-            }
-            self.finishLife(mesh: mesh, formed: formed, kind: kind)
-        }
-    }
-
-    /// The brush animal that painted most of the drawing decides what it becomes.
-    private static func dominantBrush(_ strokes: [Stroke]) -> CritterKind {
-        var amount: [CritterKind: Int] = [:]
-        for stroke in strokes { amount[stroke.brush, default: 0] += stroke.points.count }
-        return amount.max { $0.value < $1.value }?.key ?? .octopus
-    }
-
-    private func finishLife(mesh: CreatureMesh?, formed: [Stroke], kind: CritterKind) {
-        for stroke in formed {
-            stroke.node.removeAction(forKey: "shake")
-            stroke.node.runAction(.sequence([.fadeOut(duration: 0.18), .removeFromParentNode()]))
-        }
-        paintLayer.trembling = false
-        paintLayer.dissolveAway()   // the paint lifts off the canvas and becomes the creature
-        transforming = false
-        guard let mesh else {
+        for slot in Array(activeStroke.keys) { finishStroke(slot: slot) }
+        guard let photo = photographCanvas() else {
             audio.play(.fizzle)
-            return
+            return nil
         }
-        let creature = Creature(mesh: mesh, canvasZ: Self.canvasZ, kind: kind)
-        scene.rootNode.addChildNode(creature.root)
-        creatures.append(creature)
-        let center = SIMD3<Float>(mesh.center.x, mesh.center.y, Self.canvasZ + 0.2)
-        Toybox.confetti(in: scene, at: center)
-        Toybox.burst(in: scene, at: center, color: SIMD3(1, 1, 0.85), count: 40, speed: 1.6, size: 0.035, gravity: 0.5)
+        clearCanvas()
         audio.play(.fanfare)
         for buddy in buddies { buddy.critter.react(.happy, for: 1.2) }
-
-        // Keep the pond lively but uncluttered: the oldest friend floats away.
-        let living = creatures.filter { $0.phase == .alive || $0.phase == .forming }
-        if living.count > 5 { living.first?.leave() }
+        return photo
     }
 
-    func clearAll() {
+    /// Renders the canvas head-on in a little photo booth: copies of the board and the live paint,
+    /// the studio's own lights, no critters, pots or tracing guide in the way.
+    private func photographCanvas(pixels width: CGFloat = 1920) -> CGImage? {
+        guard let canvasBoard else { return nil }
+        let booth = SCNScene()
+        booth.lightingEnvironment.contents = scene.lightingEnvironment.contents
+        booth.lightingEnvironment.intensity = scene.lightingEnvironment.intensity
+        let board = canvasBoard.clone()
+        board.simdTransform = canvasBoard.simdWorldTransform
+        booth.rootNode.addChildNode(board)
+        booth.rootNode.addChildNode(paintLayer.node.clone())
+        for light in studioLights { booth.rootNode.addChildNode(light.clone()) }
+
+        let size = Self.canvasSize
+        let camera = SCNCamera()
+        camera.usesOrthographicProjection = true
+        camera.orthographicScale = Double(size.y * 0.5 * 0.99)   // a hair inside the chamfered edge
+        camera.zNear = 0.1
+        camera.zFar = 20
+        if let studio = cameraNode.camera {
+            camera.wantsHDR = studio.wantsHDR
+            camera.wantsExposureAdaptation = false
+            camera.exposureOffset = studio.exposureOffset
+            camera.minimumExposure = studio.minimumExposure
+            camera.maximumExposure = studio.maximumExposure
+        }
+        let lens = SCNNode()
+        lens.camera = camera
+        lens.simdPosition = SIMD3(0, 0.1, 5)
+        booth.rootNode.addChildNode(lens)
+
+        let renderer = SCNRenderer(device: MTLCreateSystemDefaultDevice(), options: nil)
+        renderer.scene = booth
+        renderer.pointOfView = lens
+        let pixels = CGSize(width: width, height: width * CGFloat(size.y / size.x))
+        return renderer.snapshot(atTime: 0, with: pixels, antialiasingMode: .multisampling4X).cgImageValue
+    }
+
+    /// Wipes the paint, strokes and tracing guide off the easel.
+    private func clearCanvas() {
         for stroke in strokes { stroke.node.removeFromParentNode() }
         strokes.removeAll()
         paintLayer.clear()
@@ -647,7 +625,13 @@ final class Playground {
         template = nil
         activeStroke = [:]
         lastBead = [:]
-        for creature in creatures { creature.pop() }
+        lastStamp = [:]
+        paintingNumber += 1
+        magic?.cleared()
+    }
+
+    func clearAll() {
+        clearCanvas()
         audio.play(.pop)
     }
 
@@ -740,16 +724,14 @@ final class Playground {
 
     private func publishHUD(dt: Float, hands: [HandState], drawing: Bool, erasing: Bool, rubbing: Bool) {
         let next: Hint
-        if transforming {
-            next = .transforming
-        } else if erasing {
+        if erasing {
             next = .erasing
         } else if drawing {
             next = .drawing
         } else if rubbing {
             next = .pickingColor
         } else if !strokes.isEmpty {
-            next = .clapToLife
+            next = .readyToHang
         } else if template != nil {
             next = .tracing
         } else if hands.contains(where: { $0.tracking && !$0.isPointer }) {
@@ -764,7 +746,6 @@ final class Playground {
         if next != hint { hint = next }
         let drawingExists = !strokes.isEmpty
         if drawingExists != hasDrawing { hasDrawing = drawingExists }
-        if creatures.count != creatureCount { creatureCount = creatures.count }
         let colors = buddies.map(\.colorIndex)
         if colors != buddyColors { buddyColors = colors }
         let kinds = buddies.map(\.critter.kind)

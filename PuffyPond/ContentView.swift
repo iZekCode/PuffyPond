@@ -21,17 +21,27 @@ struct PuffyPondApp: App {
 struct ContentView: View {
     @State private var playground = Playground()
     @State private var tracker = HandTracker()
+    @State private var gallery = Gallery()
+    @State private var magicStore = MagicModelStore()
+    /// Which painting the gallery opens on; nil while at the easel.
+    @State private var visit: GalleryVisit?
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         ZStack {
             PlaygroundView(playground: playground)
                 .ignoresSafeArea()
-            HUDView(playground: playground, session: tracker.session)
+            HUDView(playground: playground, session: tracker.session, magicStore: magicStore,
+                    paintingCount: gallery.paintings.count, finish: hangPainting, openGallery: { open(GalleryVisit(index: 0, justHung: false)) })
+            if let visit {
+                GalleryView(gallery: gallery, startAt: visit.index, justHung: visit.justHung) { open(nil) }
+                    .transition(.opacity)
+            }
         }
         .immersive()
         .onAppear {
             Platform.keepAwake()
+            playground.setUpMagic(store: magicStore)
             playground.start()
             startTracking()
         }
@@ -49,6 +59,17 @@ struct ContentView: View {
         }
     }
 
+    /// Photographs the painting off the easel and walks over to see it hanging in the gallery.
+    private func hangPainting() {
+        guard let photo = playground.finishPainting(), gallery.add(photo) != nil else { return }
+        open(GalleryVisit(index: 0, justHung: true))
+    }
+
+    private func open(_ next: GalleryVisit?) {
+        playground.isAway = next != nil
+        withAnimation(.easeInOut(duration: 0.45)) { visit = next }
+    }
+
     private func startTracking() {
         let playground = playground
         tracker.onFrame = { frame in playground.ingest(frame) }
@@ -60,4 +81,9 @@ struct ContentView: View {
             }
         }
     }
+}
+
+private struct GalleryVisit {
+    let index: Int
+    let justHung: Bool
 }
