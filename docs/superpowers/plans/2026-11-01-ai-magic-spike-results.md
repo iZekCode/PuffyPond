@@ -1,6 +1,6 @@
 # AI Magic spike results
 
-**Status: Mac half done, iPad half PENDING.** The gate needs the iPad numbers, so the verdict is still open.
+**Status: Mac done. First iPad run is in and FAILS the speed gate, but it was a Debug build with reduce-memory on; re-time in Release before drawing conclusions.**
 
 ## What was run (Mac, Apple M5, 24 GB, macOS 27, Xcode 27)
 
@@ -13,13 +13,20 @@ Input was a synthetic red-line fish (start image) plus its white-on-black scribb
 | Measure | Mac (M5) | iPad (M1+) |
 |---|---|---|
 | Resources on disk | 1.7 GB (6-bit) | – |
-| Cold run, 1 image, incl. load | 3.8 s | pending |
-| Warm seconds per image | ≈ 0.66 s (5 images 6.4 s vs 1 image 3.8 s) | pending |
-| Peak memory footprint | 4.9 GB (CLI; max RSS 3.5 GB) | pending |
+| Cold run, 1 image, incl. load | 3.8 s | 83.8 s (first run: model load + Core ML specialization) |
+| Warm seconds per image | ≈ 0.66 s (5 images 6.4 s vs 1 image 3.8 s) | **8.0, 8.5, 9.1, 9.2 s** (Debug build, reduce-memory on) |
+| Peak memory footprint | 4.9 GB (CLI; max RSS 3.5 GB) | not measured yet |
 
 **Gate:** warm ≤ 1.5 s per image and peak memory ≤ 3 GB on the iPad. Speed has plenty of room on the Mac. **Memory is the risk:** the Mac footprint is above 3 GB. Measure the iPad before trusting this.
 
 Note that 4 steps at strength 0.65 only run **2 denoising steps** (the first 35% of the schedule is skipped), so time per image is about half of what 4 full steps would cost.
+
+**First iPad run** (iPad Pro 13-inch M5, Xcode Debug build, `thermal 0` throughout, safety checker never blocked): 83.8 s, then 8.0 / 8.5 / 9.1 / 9.2 s. One run was cancelled by a new stroke after 4.8 s, as designed. That is 5–6× over the 1.5 s gate on a chip that should match the Mac, so something other than the chip is slow. Suspects, in order:
+1. **Debug build.** The package's Swift code (scheduler, image conversion) is unoptimised. On the Mac a debug CLI looked only mildly slower, so this alone is unlikely to explain 10×.
+2. **Reduced-memory mode.** It reloads the text encoder, ControlNet, UNet and decoder for every picture. The Mac keeps those files hot in its page cache; the iPad may not. Test with launch argument `-MagicReduceMemory NO` (trades memory for speed).
+3. Compute units or Core ML plan caching differences on iOS.
+
+Re-time with: scheme ▸ Run ▸ Build Configuration **Release**, then once with the default and once with `-MagicReduceMemory NO`, and note peak memory for each.
 
 ## Scheduler verdict
 

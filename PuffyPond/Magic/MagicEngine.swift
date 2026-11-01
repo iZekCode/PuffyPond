@@ -32,6 +32,12 @@ actor MagicEngine: MagicGenerating {
 
     var isLoaded: Bool { pipeline != nil }
 
+    /// Reduced-memory mode reloads each model for every picture: slower, but a lot lighter. On by default; for
+    /// timing experiments launch with `-MagicReduceMemory NO` (Xcode scheme ▸ Arguments Passed On Launch).
+    nonisolated static var reduceMemory: Bool {
+        UserDefaults.standard.object(forKey: "MagicReduceMemory") as? Bool ?? true
+    }
+
     func load() async throws {
         guard pipeline == nil else { return }
         let config = MLModelConfiguration()
@@ -40,7 +46,7 @@ actor MagicEngine: MagicGenerating {
                                                  controlNet: [try Self.controlNetName(in: resources)],
                                                  configuration: config,
                                                  disableSafety: false,
-                                                 reduceMemory: true)
+                                                 reduceMemory: Self.reduceMemory)
         try loaded.loadResources()
         pipeline = loaded
     }
