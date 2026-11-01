@@ -2,6 +2,7 @@ import Foundation
 import Observation
 import CoreGraphics
 import QuartzCore
+import os
 
 /// Glue between the easel and the model: tells the director what happened on the canvas, and when it
 /// says go, photographs the canvas, runs the model and fades the result in.
@@ -34,6 +35,7 @@ final class MagicController {
     @ObservationIgnored private var isPainting = false
 
     static let photoWidth: CGFloat = 640
+    private static let log = Logger(subsystem: "com.ihsanlab.PuffyPond", category: "Magic")
 
     init(overlay: MagicOverlay, store: MagicModelStore,
          photograph: @escaping (CGFloat) -> CGImage?, blank: @escaping () -> CGImage?,
@@ -96,12 +98,16 @@ final class MagicController {
         self.engine = engine
         let seed = seed()
         isGenerating = true
+        let thermalState = thermal()
         generation = Task { [weak self] in
             var image: CGImage?
+            let started = ContinuousClock.now
             do {
                 image = try await engine.generate(inputs, prompt: prompt, seed: seed)
+                Self.log.info("generated in \(started.duration(to: .now), privacy: .public), thermal \(thermalState.rawValue), blocked by safety: \(image == nil)")
             } catch {
                 image = nil                              // cancelled, or the model failed: just keep the paint
+                Self.log.error("generation ended without a picture after \(started.duration(to: .now), privacy: .public): \(error.localizedDescription, privacy: .public)")
             }
             self?.generationEnded(version: version, image: image)
         }
