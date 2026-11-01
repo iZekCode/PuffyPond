@@ -1,2 +1,5 @@
 .superpowers/
 build/
+.DS_Store
+xcuserdata/
+.serena/
