@@ -14,10 +14,11 @@ Input was a synthetic red-line fish (start image) plus its white-on-black scribb
 |---|---|---|
 | Resources on disk | 1.7 GB (6-bit) | – |
 | Cold run, 1 image, incl. load | 3.8 s | 83.8 s (first run: model load + Core ML specialization) |
-| Warm seconds per image | ≈ 0.66 s (5 images 6.4 s vs 1 image 3.8 s) | **8.0, 8.5, 9.1, 9.2 s** (Debug build, reduce-memory on) |
+| Seconds per generation call, reduce-memory on | CLI ≈ 3.8 s for one image. App: **4.3–4.6 s** (45 s first call) | **8.0–9.2 s** (Debug build; 84 s first call) |
+| Marginal seconds per extra image in one batch (CLI only) | ≈ 0.66 s | – |
 | Peak memory footprint | 4.9 GB (CLI; max RSS 3.5 GB) | not measured yet |
 
-**Gate:** warm ≤ 1.5 s per image and peak memory ≤ 3 GB on the iPad. Speed has plenty of room on the Mac. **Memory is the risk:** the Mac footprint is above 3 GB. Measure the iPad before trusting this.
+**Gate:** warm ≤ 1.5 s per image and peak memory ≤ 3 GB on the iPad. **Correction:** an earlier version of this file called ≈0.66 s the warm time. That was the *marginal* cost of one more image inside a single batch call (`--image-count`); the app generates one picture per call, and in reduce-memory mode every call reloads the text encoder, ControlNet, UNet and decoder (≈ 3+ s). The real per-picture cost today is ≈ 4.4 s on the Mac app, so **the speed gate currently fails on both**. The Mac app measured in the same range as the CLI single-image run, so the chip is not the problem; model reloads are the prime suspect. Next test: `-MagicReduceMemory NO` (models stay loaded). **Memory is the other risk:** the Mac footprint is above 3 GB. Measure the iPad before trusting this.
 
 Note that 4 steps at strength 0.65 only run **2 denoising steps** (the first 35% of the schedule is skipped), so time per image is about half of what 4 full steps would cost.
 
