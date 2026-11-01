@@ -50,7 +50,8 @@ enum Platform {
 
     static func configure(_ connection: AVCaptureConnection?) {
         guard let connection else { return }
-        if connection.isVideoRotationAngleSupported(HandTracker.rotationAngle) {
+        // The iPad's angle comes from its rotation coordinator instead (see PreviewView).
+        if !isPad, connection.isVideoRotationAngleSupported(HandTracker.rotationAngle) {
             connection.videoRotationAngle = HandTracker.rotationAngle
         }
         if connection.isVideoMirroringSupported {
@@ -263,8 +264,12 @@ struct CameraPreview: UIViewRepresentable {
 
         /// Keeps the preview upright when the iPad is turned between the two landscape sides.
         private func followDeviceRotation() {
-            guard rotation == nil,
-                  let device = (previewLayer.session?.inputs.first as? AVCaptureDeviceInput)?.device else { return }
+            guard Platform.isPad else { return }
+            if let rotation {
+                apply(rotation.videoRotationAngleForHorizonLevelPreview)
+                return
+            }
+            guard let device = (previewLayer.session?.inputs.first as? AVCaptureDeviceInput)?.device else { return }
             let coordinator = AVCaptureDevice.RotationCoordinator(device: device, previewLayer: previewLayer)
             rotation = coordinator
             apply(coordinator.videoRotationAngleForHorizonLevelPreview)
