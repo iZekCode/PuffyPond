@@ -480,7 +480,8 @@ final class Playground {
                 audio.play(.blip, a: height, pan: panFor(p.x))
             }
         } else {
-            let stroke = Stroke(color: buddy.color, radius: Self.strokeRadius, surfaceZ: Self.canvasZ + Self.strokeRadius * 0.55)
+            let stroke = Stroke(color: buddy.color, radius: Self.strokeRadius, surfaceZ: Self.canvasZ + Self.strokeRadius * 0.55,
+                                brush: buddy.critter.kind)
             stroke.add(p, now: now)
             strokes.append(stroke)
             activeStroke[slot] = stroke
@@ -541,7 +542,7 @@ final class Playground {
                 stroke.replacePoints(first)
                 newStrokes.append(stroke)
                 for run in runs.dropFirst() {
-                    let piece = Stroke(color: stroke.color, radius: stroke.radius, surfaceZ: stroke.surfaceZ)
+                    let piece = Stroke(color: stroke.color, radius: stroke.radius, surfaceZ: stroke.surfaceZ, brush: stroke.brush)
                     piece.replacePoints(run)
                     scene.rootNode.addChildNode(piece.node)
                     newStrokes.append(piece)
@@ -584,6 +585,7 @@ final class Playground {
         let input = formed.map { stroke in
             InflateStroke(points: stroke.points.map(\.p), radius: stroke.radius, color: stroke.color)
         }
+        let kind = Self.dominantBrush(formed)
         audio.play(.rise)
         // Anticipation: the strokes jiggle and swell before the reveal.
         for stroke in formed {
@@ -600,11 +602,18 @@ final class Playground {
             if waited < 0.7 {
                 try? await Task.sleep(nanoseconds: UInt64((0.7 - waited) * 1_000_000_000))
             }
-            self.finishLife(mesh: mesh, formed: formed)
+            self.finishLife(mesh: mesh, formed: formed, kind: kind)
         }
     }
 
-    private func finishLife(mesh: CreatureMesh?, formed: [Stroke]) {
+    /// The brush animal that painted most of the drawing decides what it becomes.
+    private static func dominantBrush(_ strokes: [Stroke]) -> CritterKind {
+        var amount: [CritterKind: Int] = [:]
+        for stroke in strokes { amount[stroke.brush, default: 0] += stroke.points.count }
+        return amount.max { $0.value < $1.value }?.key ?? .octopus
+    }
+
+    private func finishLife(mesh: CreatureMesh?, formed: [Stroke], kind: CritterKind) {
         for stroke in formed {
             stroke.node.removeAction(forKey: "shake")
             stroke.node.runAction(.sequence([.fadeOut(duration: 0.18), .removeFromParentNode()]))
@@ -616,7 +625,7 @@ final class Playground {
             audio.play(.fizzle)
             return
         }
-        let creature = Creature(mesh: mesh, canvasZ: Self.canvasZ)
+        let creature = Creature(mesh: mesh, canvasZ: Self.canvasZ, kind: kind)
         scene.rootNode.addChildNode(creature.root)
         creatures.append(creature)
         let center = SIMD3<Float>(mesh.center.x, mesh.center.y, Self.canvasZ + 0.2)

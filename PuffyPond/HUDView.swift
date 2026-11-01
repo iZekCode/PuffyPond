@@ -206,7 +206,7 @@ private struct GuideCard: View {
         Row(symbol: "star.fill", color: .pink, title: "Fist = Starfish",
             detail: "Make a fist and your critter turns into a starfish that scrubs paint away."),
         Row(symbol: "hands.clap.fill", color: .purple, title: "Clap = bring it to life",
-            detail: "Your drawing inflates into a 3D balloon buddy."),
+            detail: "Your drawing comes alive. The animal that painted most of it decides: plush, clay, spiky puffer, swimmer, jelly or hopper."),
         Row(symbol: "hand.wave.fill", color: .teal, title: "Play with them",
             detail: "Bump creatures with your critter to make them boing. A starfish pops them!"),
     ]

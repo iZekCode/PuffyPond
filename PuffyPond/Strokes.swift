@@ -34,19 +34,21 @@ struct StrokePoint {
     var born: Double
 }
 
-/// The path of one brush stroke: what the fish drew, in which color.
+/// The path of one brush stroke: what the fish drew, in which color, with which brush animal.
 /// (What you *see* is the PaintLayer; this is what gets inflated into a creature.)
 final class Stroke {
     let node = SCNNode()
     let color: SIMD3<Float>
     let radius: Float
     let surfaceZ: Float
+    let brush: CritterKind
     private(set) var points: [StrokePoint] = []
 
-    init(color: SIMD3<Float>, radius: Float, surfaceZ: Float) {
+    init(color: SIMD3<Float>, radius: Float, surfaceZ: Float, brush: CritterKind) {
         self.color = color
         self.radius = radius
         self.surfaceZ = surfaceZ
+        self.brush = brush
     }
 
     var isEmpty: Bool { points.isEmpty }
