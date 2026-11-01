@@ -6,8 +6,23 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		7A0000000000000500000000 /* StableDiffusion in Frameworks */ = {isa = PBXBuildFile; productRef = 7A0000000000000410000000 /* StableDiffusion */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		7A0000000000000600000000 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 7A0000000000000000000000 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 7A0000000000000100000000;
+			remoteInfo = PuffyPond;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		7A0000000000000000000120 /* PuffyPond.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PuffyPond.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		7A0000000000000000000220 /* PuffyPondTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PuffyPondTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -16,10 +31,23 @@
 			path = PuffyPond;
 			sourceTree = "<group>";
 		};
+		7A0000000000000000000210 /* PuffyPondTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = PuffyPondTests;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		7A0000000000000130000000 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7A0000000000000500000000 /* StableDiffusion in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7A0000000000000230000000 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -33,6 +61,7 @@
 			isa = PBXGroup;
 			children = (
 				7A0000000000000000000010 /* PuffyPond */,
+				7A0000000000000000000210 /* PuffyPondTests */,
 				7A0000000000000000000020 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -41,6 +70,7 @@
 			isa = PBXGroup;
 			children = (
 				7A0000000000000000000120 /* PuffyPond.app */,
+				7A0000000000000000000220 /* PuffyPondTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -64,9 +94,33 @@
 				7A0000000000000000000010 /* PuffyPond */,
 			);
 			name = PuffyPond;
+			packageProductDependencies = (
+				7A0000000000000410000000 /* StableDiffusion */,
+			);
 			productName = PuffyPond;
 			productReference = 7A0000000000000000000120 /* PuffyPond.app */;
 			productType = "com.apple.product-type.application";
+		};
+		7A0000000000000200000000 /* PuffyPondTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7A0000000000000210000000 /* Build configuration list for PBXNativeTarget "PuffyPondTests" */;
+			buildPhases = (
+				7A0000000000000220000000 /* Sources */,
+				7A0000000000000230000000 /* Frameworks */,
+				7A0000000000000240000000 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				7A0000000000000610000000 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				7A0000000000000000000210 /* PuffyPondTests */,
+			);
+			name = PuffyPondTests;
+			productName = PuffyPondTests;
+			productReference = 7A0000000000000000000220 /* PuffyPondTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
 		};
 /* End PBXNativeTarget section */
 
@@ -81,6 +135,10 @@
 					7A0000000000000100000000 = {
 						CreatedOnToolsVersion = 26.3;
 					};
+					7A0000000000000200000000 = {
+						CreatedOnToolsVersion = 26.3;
+						TestTargetID = 7A0000000000000100000000;
+					};
 				};
 			};
 			buildConfigurationList = 7A0000000000000010000000 /* Build configuration list for PBXProject "PuffyPond" */;
@@ -92,18 +150,29 @@
 			);
 			mainGroup = 7A0000000000000000000001;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				7A0000000000000400000000 /* XCRemoteSwiftPackageReference "ml-stable-diffusion" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 7A0000000000000000000020 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
 				7A0000000000000100000000 /* PuffyPond */,
+				7A0000000000000200000000 /* PuffyPondTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		7A0000000000000140000000 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7A0000000000000240000000 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -120,7 +189,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		7A0000000000000220000000 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		7A0000000000000610000000 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 7A0000000000000100000000 /* PuffyPond */;
+			targetProxy = 7A0000000000000600000000 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		7A0000000000000011000000 /* Debug */ = {
@@ -221,7 +305,7 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = BB52H6RL6K;
+				DEVELOPMENT_TEAM = ZU2326AL7G;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
@@ -274,7 +358,7 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = BB52H6RL6K;
+				DEVELOPMENT_TEAM = ZU2326AL7G;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
@@ -322,6 +406,54 @@
 			};
 			name = Release;
 		};
+		7A0000000000000211000000 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = ZU2326AL7G;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.ihsanlab.PuffyPondTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = auto;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				"TEST_HOST[sdk=iphoneos*]" = "$(BUILT_PRODUCTS_DIR)/PuffyPond.app/PuffyPond";
+				"TEST_HOST[sdk=iphonesimulator*]" = "$(BUILT_PRODUCTS_DIR)/PuffyPond.app/PuffyPond";
+				"TEST_HOST[sdk=macosx*]" = "$(BUILT_PRODUCTS_DIR)/PuffyPond.app/Contents/MacOS/PuffyPond";
+			};
+			name = Debug;
+		};
+		7A0000000000000212000000 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = ZU2326AL7G;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.ihsanlab.PuffyPondTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = auto;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				"TEST_HOST[sdk=iphoneos*]" = "$(BUILT_PRODUCTS_DIR)/PuffyPond.app/PuffyPond";
+				"TEST_HOST[sdk=iphonesimulator*]" = "$(BUILT_PRODUCTS_DIR)/PuffyPond.app/PuffyPond";
+				"TEST_HOST[sdk=macosx*]" = "$(BUILT_PRODUCTS_DIR)/PuffyPond.app/Contents/MacOS/PuffyPond";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -343,7 +475,35 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		7A0000000000000210000000 /* Build configuration list for PBXNativeTarget "PuffyPondTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7A0000000000000211000000 /* Debug */,
+				7A0000000000000212000000 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		7A0000000000000400000000 /* XCRemoteSwiftPackageReference "ml-stable-diffusion" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/ml-stable-diffusion";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.1.1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		7A0000000000000410000000 /* StableDiffusion */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 7A0000000000000400000000 /* XCRemoteSwiftPackageReference "ml-stable-diffusion" */;
+			productName = StableDiffusion;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 7A0000000000000000000000 /* Project object */;
 }
